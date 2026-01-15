@@ -97,23 +97,25 @@ export const ChatRoom = {
           ChatRoom.sendMessage(vnode);
         }
       }, [
-        m('input[type=text]', {
-          placeholder: 'Type a message...',
-          value: newMessage,
-          disabled: sending,
-          oninput(e) {
-            vnode.state.newMessage = e.target.value;
-          },
-          onkeydown(e) {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              ChatRoom.sendMessage(vnode);
+        m('div', { role: 'group' }, [
+          m('input[type=text]', {
+            placeholder: 'Type a message...',
+            value: newMessage,
+            disabled: sending,
+            oninput(e) {
+              vnode.state.newMessage = e.target.value;
+            },
+            onkeydown(e) {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                ChatRoom.sendMessage(vnode);
+              }
             }
-          }
-        }),
-        m('button[type=submit]', {
-          disabled: sending || !newMessage.trim()
-        }, sending ? 'Sending...' : 'Send')
+          }),
+          m('button[type=submit]', {
+            disabled: sending || !newMessage.trim()
+          }, sending ? '...' : 'Send')
+        ])
       ])
     ]);
   }
