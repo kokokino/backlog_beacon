@@ -98,7 +98,8 @@ footer {
 
 .chat-message {
   padding: 0.5rem 0.75rem;
-  background: var(--pico-card-background-color);
+  background: #2e7d32;
+  color: #ffffff;
   border-radius: var(--pico-border-radius);
   max-width: 80%;
 }
