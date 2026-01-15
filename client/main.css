@@ -132,27 +132,13 @@ footer {
 }
 
 .chat-input-form {
-  display: flex !important;
-  flex-wrap: nowrap;
-  gap: 0.5rem;
   padding: 1rem;
   border-top: 1px solid var(--pico-muted-border-color);
   margin-bottom: 0;
-  grid-template-columns: none !important;
 }
 
-.chat-input-form input[type="text"] {
-  flex: 1 1 auto !important;
-  min-width: 0;
-  width: 100% !important;
+.chat-input-form [role="group"] {
   margin-bottom: 0;
-}
-
-.chat-input-form button {
-  flex: 0 0 auto !important;
-  margin-bottom: 0;
-  width: auto !important;
-  white-space: nowrap;
 }
 
 /* Loading spinner */
