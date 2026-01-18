@@ -68,6 +68,20 @@ This app follows the Kokokino Hub & Spoke architecture:
 - Node.js 20+
 - Access to a running Kokokino Hub instance (local or production)
 
+## Preferred Tech Stack
+We focus on simplicity as a super‑power:
+
+| Technology | Purpose |
+|------------|---------|
+| **JavaScript** | Unified language for both server‑side and browser‑side code |
+| **Meteor JS v3** | Realtime apps, user accounts, and MongoDB integration |
+| **Meteor Galaxy** | To deploy our apps in the cloud |
+| **Mithril JS v2.3** | General UI, using JavaScript to craft HTML |
+| **Pico CSS** | Concise HTML that looks good with minimal effort |
+| **Babylon JS v8** | 3D rendering and physics (with Havok JS built‑in) |
+
+You can choose a different tech stack but the more we converge on a similar stack, the easier it is to help each other. 
+
 ### Installation
 
 1. Clone this repository:
@@ -291,7 +305,8 @@ We welcome contributions! Please see our [Contributing Guidelines](documentation
 
 - [Kokokino Hub](https://github.com/kokokino/hub) – Central authentication and billing app
 - [Hub & Spoke Strategy](documentation/HUB_SPOKE_STRATEGY.md) – Architecture documentation
-- [Backlog Beacon](https://github.com/kokokino/backlog_beacon) – Example spoke app for game collection tracking
+- [Conventions](documentation/CONVENTIONS.md) – Coding advice
+- [Backlog Beacon](https://github.com/kokokino/backlog_beacon) – Another example spoke app for game collection tracking
 - [Meteor Documentation](https://docs.meteor.com/) – Meteor framework guides
 - [Mithril.js Documentation](https://mithril.js.org/) – UI framework reference
 
