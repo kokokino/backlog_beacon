@@ -1,65 +1,72 @@
-# Spoke App Skeleton
+# Backlog Beacon
 
-A template for creating new spoke apps and a reference implementation of Hub integration for the Kokokino ecosystem.
+A video game collection management app for the Kokokino ecosystem. Track your games, import from Darkadia, and browse your collection on a beautiful 3D bookshelf.
 
 ## Overview
 
-The Spoke App Skeleton is a fully functional Meteor application that demonstrates how to integrate with the Kokokino Hub for authentication, billing, and Single Sign‑On (SSO). It serves as both:
+Backlog Beacon is a fully functional Meteor spoke app that integrates with the Kokokino Hub for authentication and billing. It allows gamers to:
 
-1. **A Template** – Ready-to-fork starting point for creating new spoke apps
-2. **A Reference Implementation** – Working example of Hub integration patterns
-3. **A Demo App** – Functional chat application showing real-time Meteor features
+1. **Track their video game collection** – Record games you own, are playing, have completed, or plan to play
+2. **Import from Darkadia** – Seamlessly import your existing collection from Darkadia CSV exports
+3. **Browse in 3D** – Visualize your collection on an interactive 3D bookshelf powered by Babylon.js
+4. **Stay organized** – Filter, sort, and search your collection with powerful tools
+
+As a Kokokino spoke app, Backlog Beacon relies on the Hub for user authentication and subscription management, ensuring a secure and consistent experience across the ecosystem
 
 ## Architecture
 
-This app follows the Kokokino Hub & Spoke architecture:
+Backlog Beacon follows the Kokokino Hub & Spoke architecture:
 
 - **Hub** – Central authentication and billing system (`kokokino.com`)
 - **Spoke** – Independent app that relies on Hub for user management
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         KOKOKINO HUB                           │
+│                         KOKOKINO HUB                            │
 │                    (kokokino.com:3000)                          │
-│  • User accounts    • Billing    • SSO tokens    • Spoke API   │
+│  • User accounts    • Billing    • SSO tokens    • Spoke API    │
 └─────────────────────────────────────────────────────────────────┘
                                     │
                                     │ SSO Token
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    SPOKE APP SKELETON                           │
-│                  (localhost:3010 or your-domain)                │
-│  • SSO validation  • Chat demo    • Subscription checks        │
+│                    BACKLOG BEACON                               │
+│                  (localhost:3020 or your-domain)                │
+│  • SSO validation  • Subscription checks  • Game collection     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
 
-### 1. SSO Integration
-- Complete token validation flow from Hub redirects
-- Local session management using Meteor Accounts
-- Automatic session refresh and expiration handling
+### 1. Game Collection Management                            
+- Add games to your collection with status (backlog, playing, completed, abandoned)
+- Rate games and add notes, hours played, and completion dates
+- Filter and search by platform, genre, status, and more
+- Bulk edit and delete operations
 
-### 2. Subscription Management
-- Middleware for checking user subscriptions
-- Graceful handling of expired/missing subscriptions
-- Integration with Hub's subscription API
+### 2. Darkadia CSV Import                               
+- Import your existing collection from Darkadia CSV exports
+- Intelligent game matching against the built‑in game database
+- Preview unmatched games before finalizing import       
+- Merge duplicates and handle conflicts gracefully
 
-### 3. Demo Chat Room
-- Real-time messaging using Meteor publications and methods
-- In-memory message store (not persisted between server restarts)
-- User presence and typing indicators (future enhancement)
+### 3. 3D Bookshelf Visualization                               
+- Interactive 3D bookshelf built with Babylon.js     
+- Flyweight rendering for performance with large collections  
+- Click books to view game details                        
+- Smooth camera controls (pan, zoom, rotate)
 
-### 4. Authentication Pages
-- "Not Logged In" page with link to Hub
-- "Subscription Required" page with clear instructions
-- "Session Expired" page for token expiration
+### 4. Self‑Hosted Game Database                           
+- Built‑in database of games with metadata (title, platform, release year, cover art)
+- Regular updates from open‑source game data sources      
+- Admin interface for manual updates and corrections
 
-### 5. Modern UI Components
-- Built with Mithril.js for lightweight, reactive components
-- Styled with Pico CSS for minimal, classless styling
-- Responsive design that works on mobile and desktop
+### 5. Hub Integration                                        
+- Single Sign‑On (SSO) via Kokokino Hub               
+- Subscription checking (requires Base Monthly subscription)    
+- Secure API communication with Hub                   
+- Automatic session management                               
 
 ## Getting Started
 
@@ -80,14 +87,12 @@ We focus on simplicity as a super‑power:
 | **Pico CSS** | Concise HTML that looks good with minimal effort |
 | **Babylon JS v8** | 3D rendering and physics (with Havok JS built‑in) |
 
-You can choose a different tech stack but the more we converge on a similar stack, the easier it is to help each other. 
-
 ### Installation
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/kokokino/spoke_app_skeleton.git
-   cd spoke_app_skeleton
+   git clone https://github.com/kokokino/backlog_beacon.git
+   cd backlog_beacon
    ```
 
 2. Install dependencies:
@@ -100,17 +105,17 @@ You can choose a different tech stack but the more we converge on a similar stac
    cp settings.example.json settings.development.json
    ```
 
-4. Configure your settings:
+4. Configure your settings for Backlog Beacon:
    ```json
    {
      "public": {
-       "appName": "Your Spoke App Name",
-       "appId": "your_app_id",
+       "appName": "Backlog Beacon",
+       "appId": "backlog_beacon",
        "hubUrl": "http://localhost:3000",
        "requiredProducts": ["base_monthly"]
      },
      "private": {
-       "hubApiKey": "your-spoke-api-key-from-hub",
+       "hubApiKey": "your-backlog-beacon-api-key-from-hub",
        "hubApiUrl": "http://localhost:3000/api/spoke",
        "hubPublicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
      }
@@ -119,7 +124,7 @@ You can choose a different tech stack but the more we converge on a similar stac
 
 5. Run the development server:
    ```bash
-   meteor --settings settings.development.json --port 3010
+   meteor --settings settings.development.json --port 3020
    ```
 
 ### Running with Local Hub
@@ -133,22 +138,22 @@ For local development with the Hub:
    # Hub runs on http://localhost:3000
    ```
 
-2. **Start the Spoke**:
+2. **Start Backlog Beacon**:
    ```bash
-   cd ../spoke_app_skeleton
-   meteor --settings settings.development.json --port 3010
-   # Spoke runs on http://localhost:3010
+   cd ../backlog_beacon
+   meteor --settings settings.development.json --port 3020
+   # Backlog Beacon runs on http://localhost:3020
    ```
 
 3. **Access the app**:
    - Visit http://localhost:3000 to log into the Hub
-   - Click "Launch" on your spoke app in the Hub
-   - You'll be redirected to http://localhost:3010 with SSO token
+   - Click "Launch" on Backlog Beacon in the Hub
+   - You'll be redirected to http://localhost:3020 with SSO token
 
 ## Project Structure
 
 ```
-spoke_app_skeleton/
+backlog_beacon/
 ├── client/
 │   ├── main.html          # Main HTML template
 │   ├── main.css           # Global styles
@@ -160,25 +165,31 @@ spoke_app_skeleton/
 │   │   └── subscriptions.js # Subscription checking
 │   ├── ui/
 │   │   ├── components/    # Reusable UI components
-│   │   │   ├── ChatMessage.js
-│   │   │   ├── ChatRoom.js
+│   │   │   ├── GameCard.js
+│   │   │   ├── BookshelfView.js
+│   │   │   ├── ImportWizard.js
 │   │   │   ├── RequireAuth.js
 │   │   │   └── RequireSubscription.js
 │   │   ├── layouts/       # Page layouts
 │   │   │   └── MainLayout.js
 │   │   └── pages/         # Route pages
 │   │       ├── HomePage.js
+│   │       ├── CollectionPage.js
+│   │       ├── ImportPage.js
+│   │       ├── BookshelfPage.js
 │   │       ├── NotLoggedIn.js
 │   │       ├── NoSubscription.js
 │   │       ├── SessionExpired.js
-│   │       └── SsoCallback.js
+│   │       ├── SsoCallback.js
+│   │       └── StatisticsPage.js
 │   └── lib/
 │       └── collections/   # MongoDB collections
-│           └── chatMessages.js
+│           ├── games.js          # Game database
+│           └── collectionItems.js # User collection items
 ├── server/
 │   ├── main.js            # Server entry point
 │   ├── accounts.js        # Custom login handlers
-│   ├── methods.js         # Meteor methods
+│   ├── methods.js         # Meteor methods (collection, import, etc.)
 │   └── publications.js    # Data publications
 ├── tests/                 # Test files
 ├── settings.example.json  # Example configuration
@@ -187,57 +198,46 @@ spoke_app_skeleton/
 
 ## Key Components
 
-### SSO Handler (`imports/hub/ssoHandler.js`)
-Handles token validation from Hub redirects:
-- Verifies JWT signatures using Hub's public key
-- Checks token expiration and app ID
-- Prevents replay attacks using nonce tracking
+### Game Database (`imports/lib/collections/games.js`)
+- Central repository of game metadata
+- Regularly updated from open‑source sources
+- Indexed for fast searching and filtering
 
-### Hub API Client (`imports/hub/client.js`)
-Makes authenticated requests to Hub API:
-- Validates user tokens
-- Checks subscription status
-- Retrieves user information
-- Implements caching for performance
+### Collection Management (`imports/lib/collections/collectionItems.js`)
+- Tracks user‑specific game entries
+- Stores status, ratings, notes, and play history
+- Linked to the game database for metadata
 
-### Subscription Middleware (`imports/ui/components/RequireSubscription.js`)
-Higher-order component that:
-- Checks if user has required subscriptions
-- Redirects to appropriate pages if not
-- Re-validates subscriptions periodically
-- Shows loading states during checks
+### 3D Bookshelf (`imports/ui/components/BookshelfView.js`)
+- Babylon.js‑based 3D visualization
+- Flyweight pattern for rendering thousands of books efficiently
+- Interactive camera and selection
 
-### Chat Implementation
-Demonstrates Meteor's real-time capabilities:
-- **Server-side**: In-memory message store with publication
-- **Client-side**: Reactive subscription with Mithril components
-- **Methods**: Secure message sending with user validation
+### Darkadia Import (`imports/ui/components/ImportWizard.js`)
+- Step‑by‑step CSV import wizard
+- Game matching algorithm
+- Preview and confirmation before final import
 
-## Creating Your Own Spoke App
+### Hub Integration
+- **SSO Handler** (`imports/hub/ssoHandler.js`) – Validates Hub tokens
+- **Hub API Client** (`imports/hub/client.js`) – Communicates with Hub for subscription checks
+- **RequireSubscription** (`imports/ui/components/RequireSubscription.js`) – Protects routes
 
-### Step 1: Fork This Repository
-Use this skeleton as a starting point for your own spoke app.
+## Game Database                                           
 
-### Step 2: Update Configuration
-1. Change `appId` in settings to your app's unique identifier
-2. Update `appName` to your app's display name
-3. Set `requiredProducts` to the product IDs your app needs
+Backlog Beacon includes a self‑hosted game database to avoid reliance on external APIs. The database is populated from open‑source sources and can be updated periodically.
 
-### Step 3: Customize Features
-1. Replace the demo chat with your app's functionality
-2. Add your own collections, methods, and publications
-3. Create custom UI components for your app's needs
-4. Remove or modify authentication pages as needed
-
-### Step 4: Register with Hub
-1. Contact Kokokino administrators to get an API key
-2. Provide your app's URL and required products
-3. Receive your unique `appId` and API key
-
-### Step 5: Deploy
-Deploy to Meteor Galaxy or your preferred hosting:
+**Current data sources under consideration:**
+- **IGDB Data Export** – Comprehensive but may have licensing restrictions
+- **OpenVGDB** – SQLite database, good for retro games
+- **TheGamesDB** – XML dumps available
+- **MobyGames** – Data dumps for approved projects         
+- **LaunchBox** – XML database, very comprehensive
+                                                   
+**Updating the database:**
 ```bash
-meteor deploy your-app.kokokino.com --settings settings.production.json
+# Admin method to trigger an update (requires admin privileges)
+meteor call 'admin.updateGameDatabase'
 ```
 
 ## Development Guidelines
@@ -255,10 +255,10 @@ meteor deploy your-app.kokokino.com --settings settings.production.json
 - Sanitize user input before display
 
 ### Performance Tips
-- Cache subscription checks when appropriate
-- Use Meteor's reactive data sources efficiently
-- Minimize database queries in publications
-- Implement pagination for large data sets
+- Use flyweight pattern for 3D bookshelf rendering
+- Implement virtual scrolling for large lists
+- Cache game database queries
+- Use MongoDB indexes appropriately
 
 ## Testing
 
@@ -270,8 +270,9 @@ meteor test --driver-package meteortesting:mocha
 Tests cover:
 - SSO token validation
 - Subscription checking
-- Chat message functionality
-- Authentication flows
+- Game database operations
+- Collection CRUD methods
+- Import functionality
 
 ## Troubleshooting
 
@@ -292,10 +293,15 @@ Tests cover:
    - Check that product IDs match between Hub and spoke
    - Verify API responses are being parsed correctly
 
-4. **Chat Messages Not Updating**
-   - Ensure user is logged in and has subscription
-   - Check browser console for errors
-   - Verify Meteor methods and publications are working
+4. **Game Database Not Populated**
+   - Run the database update script
+   - Check that the data source files are accessible
+   - Verify MongoDB connection
+
+5. **3D Bookshelf Performance Issues**
+   - Reduce the number of visible books
+   - Enable Babylon.js optimizations
+   - Check for memory leaks in the flyweight renderer
 
 ## Contributing
 
@@ -306,7 +312,7 @@ We welcome contributions! Please see our [Contributing Guidelines](documentation
 - [Kokokino Hub](https://github.com/kokokino/hub) – Central authentication and billing app
 - [Hub & Spoke Strategy](documentation/HUB_SPOKE_STRATEGY.md) – Architecture documentation
 - [Conventions](documentation/CONVENTIONS.md) – Coding advice
-- [Backlog Beacon](https://github.com/kokokino/backlog_beacon) – Another example spoke app for game collection tracking
+- [Spoke App Skeleton](https://github.com/kokokino/spoke_app_skeleton) – Template used to create this app
 - [Meteor Documentation](https://docs.meteor.com/) – Meteor framework guides
 - [Mithril.js Documentation](https://mithril.js.org/) – UI framework reference
 
