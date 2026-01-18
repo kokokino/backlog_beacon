@@ -421,112 +421,170 @@ spoke_app_name/
 
 ---
 
-## Spoke App Skeleton
+## Backlog Beacon
 
 ### Purpose
 
-The Spoke App Skeleton serves as:
-1. A template for creating new spoke apps
-2. A reference implementation of Hub integration
-3. A working demo with a simple chat feature
-4. Documentation through code
+Backlog Beacon is a video game collection management app, similar to Darkadia or Backloggery. It allows users to:
+- Track games they own, are playing, or have completed
+- Import collections from Darkadia CSV exports
+- Browse their collection on a 3D rendered bookshelf
+- (Future) Import from Steam, GOG, and other platforms
 
-### Features
+### Subscription Requirements
 
-1. **SSO Integration**
-   - Complete token validation flow
-   - Local session management
-   - Automatic session refresh
+- Requires: Base Monthly subscription only (included in $2/month)
+- No additional subscription needed
 
-2. **Subscription Checking**
-   - Requires base monthly subscription only
-   - Demonstrates subscription middleware pattern
-   - Graceful handling of expired subscriptions
+### Key Features
 
-3. **Demo Chat Room**
-   - Real-time messaging using Meteor publications
-   - Messages are NOT persisted (in-memory only)
-   - Demonstrates Meteor's reactivity without polling
-   - Shows pattern for user presence
+#### 1. Game Database (Self-Hosted)
 
-4. **Auth State Pages**
-   - Clean "Not Logged In" page
-   - Clear "Subscription Required" page
-   - Helpful "Session Expired" page
+Instead of relying on external APIs, Backlog Beacon will use a self-hosted open source game database.
 
-5. **Developer Documentation**
-   - Inline code comments
-   - README with setup instructions
-   - Guide for forking to create new spokes
+**Options to evaluate:**
+- **IGDB Data Export** - Comprehensive but may have licensing restrictions
+- **OpenVGDB** - SQLite database, good for retro games
+- **TheGamesDB** - XML dumps available
+- **MobyGames** - Has data dumps for approved projects
+- **LaunchBox** - XML database, very comprehensive
 
-### Chat Implementation Details
-
+**Implementation:**
 ```javascript
-// Server-side in-memory message store
-const chatMessages = [];
-const MAX_MESSAGES = 100;
-const subscribers = new Set();
-
-// When a message is added, notify all subscribers
-function addMessage(message) {
-  chatMessages.push(message);
-  if (chatMessages.length > MAX_MESSAGES) {
-    chatMessages.shift(); // Remove oldest
+// Server-side scheduled job (weekly)
+SyncedCron.add({
+  name: 'Update game database',
+  schedule: (parser) => parser.text('at 3:00 am on Sunday'),
+  job: async () => {
+    await updateGameDatabase();
   }
-  // Notify all publication subscribers
-  subscribers.forEach(sub => {
-    sub.added('chatMessages', message._id, message);
-  });
-}
-
-// Publication sends current messages and listens for new ones
-Meteor.publish('chatMessages', function() {
-  const sub = this;
-  
-  // Send existing messages
-  chatMessages.forEach(msg => {
-    sub.added('chatMessages', msg._id, msg);
-  });
-  
-  // Track this subscriber
-  subscribers.add(sub);
-  
-  sub.ready();
-  
-  sub.onStop(() => {
-    subscribers.delete(sub);
-  });
 });
 
-// Method to send a message
+// Admin method for manual update
 Meteor.methods({
-  'chat.send'(text) {
-    // Validate user is logged in and has subscription
-    if (!this.userId) throw new Meteor.Error('not-authorized');
-    
-    // Get user info from local session
-    const user = Meteor.users.findOne(this.userId);
-    
-    const message = {
-      _id: Random.id(),
-      text: text.substring(0, 500), // Limit length
-      userId: this.userId,
-      username: user.username,
-      createdAt: new Date()
-    };
-    
-    addMessage(message);
-    
-    return message._id;
+  'admin.updateGameDatabase'() {
+    if (!isAdmin(this.userId)) throw new Meteor.Error('not-authorized');
+    return updateGameDatabase();
   }
 });
 ```
 
+#### 2. Darkadia CSV Import
+
+```javascript
+// CSV format (example)
+// "Title","Platform","Status","Rating","Notes"
+// "The Legend of Zelda","NES","Completed","5","Classic!"
+
+Meteor.methods({
+  'collection.importDarkadia'(csvContent) {
+    // Parse CSV
+    // Match games to database entries
+    // Create collection items
+    // Return import summary
+  }
+});
+```
+
+#### 3. 3D Bookshelf (Babylon JS)
+
+Using a flyweight/virtual scrolling pattern for performance:
+
+```javascript
+// Only render visible books + buffer
+const VISIBLE_BOOKS = 50;
+const BUFFER_BOOKS = 10;
+
+class BookshelfRenderer {
+  constructor(scene, collection) {
+    this.scene = scene;
+    this.collection = collection; // Full collection data
+    this.bookMeshes = []; // Pool of reusable meshes
+    this.scrollPosition = 0;
+    
+    // Create mesh pool
+    for (let i = 0; i < VISIBLE_BOOKS + BUFFER_BOOKS; i++) {
+      this.bookMeshes.push(this.createBookMesh());
+    }
+  }
+  
+  createBookMesh() {
+    // Create a book-shaped mesh with placeholder texture
+    const book = BABYLON.MeshBuilder.CreateBox('book', {
+      width: 0.15,
+      height: 0.22,
+      depth: 0.03
+    }, this.scene);
+    return book;
+  }
+  
+  updateVisibleBooks() {
+    const startIndex = Math.floor(this.scrollPosition);
+    const visibleGames = this.collection.slice(
+      startIndex, 
+      startIndex + VISIBLE_BOOKS
+    );
+    
+    // Reposition and retexture mesh pool
+    visibleGames.forEach((game, i) => {
+      const mesh = this.bookMeshes[i];
+      mesh.position = this.calculateBookPosition(startIndex + i);
+      this.applyGameTexture(mesh, game);
+      mesh.setEnabled(true);
+    });
+    
+    // Hide unused meshes
+    for (let i = visibleGames.length; i < this.bookMeshes.length; i++) {
+      this.bookMeshes[i].setEnabled(false);
+    }
+  }
+  
+  onScroll(delta) {
+    this.scrollPosition = Math.max(0, this.scrollPosition + delta);
+    this.updateVisibleBooks();
+  }
+}
+```
+
+#### 4. Collection Data Model
+
+```javascript
+// lib/collections/games.js - The game database
+Games = new Mongo.Collection('games');
+// {
+//   _id: "...",
+//   title: "The Legend of Zelda",
+//   platforms: ["NES", "GBA", "Switch"],
+//   releaseYear: 1986,
+//   developer: "Nintendo",
+//   publisher: "Nintendo",
+//   genres: ["Action", "Adventure"],
+//   coverUrl: "/covers/zelda-nes.jpg",
+//   // ... more metadata
+// }
+
+// lib/collections/collectionItems.js - User's collection
+CollectionItems = new Mongo.Collection('collectionItems');
+// {
+//   _id: "...",
+//   userId: "user123",
+//   gameId: "game456",
+//   platform: "NES",
+//   status: "completed", // backlog, playing, completed, abandoned
+//   rating: 5,
+//   hoursPlayed: 25,
+//   notes: "My favorite game!",
+//   dateAdded: Date,
+//   dateCompleted: Date,
+//   // ... custom fields
+// }
+```
+
 ### GitHub Repository
 
-- Repository: `github.com/kokokino/spoke_app_skeleton`
+- Repository: `github.com/kokokino/backlog_beacon`
+- Forked from: `github.com/kokokino/spoke_app_skeleton`
 - License: Same as Hub (open source)
-- Branch strategy: `main` for stable, `develop` for work-in-progress
 
 ---
 
@@ -614,107 +672,125 @@ hub/
 
 ---
 
-### Phase 2: Spoke App Skeleton
+### Phase 2: Backlog Beacon (Initial)
 
-**Goal:** Create a fully functional template spoke app with SSO and demo features.
+**Goal:** Fork skeleton and implement core collection management features.
 
 **Tasks:**
 
-1. **Initialize Meteor App**
-   - `meteor create spoke_app_skeleton`
-   - Configure packages (accounts-base, etc.)
-   - Set up Mithril and Pico CSS
+1. **Fork Spoke App Skeleton**
+   - Create new repo from skeleton
+   - Update app name and settings
+   - Verify SSO still works
 
-2. **Implement SSO Handler**
-   - `/sso` route receives token
-   - Validate with Hub's public key
-   - Call Hub API to verify and get user data
-   - Create local Meteor session
+2. **Design Data Models**
+   - `Games` collection (database)
+   - `CollectionItems` collection (user data)
+   - Indexes for performance
 
-3. **Implement Custom Accounts Login**
-   - `Accounts.registerLoginHandler` for SSO
-   - Store minimal user data locally
-   - Handle session expiration
+3. **Implement Game Database**
+   - Choose and integrate open source DB
+   - Create import/sync scripts
+   - Admin controls for updates
 
-4. **Create Hub Client Library**
-   - `imports/hub/client.js`
-   - Functions for all Hub API calls
-   - Caching and error handling
+4. **Implement Collection CRUD**
+   - Add game to collection
+   - Update status/rating/notes
+   - Remove from collection
+   - List/filter/sort collection
 
-5. **Implement Subscription Middleware**
-   - Check subscription on protected routes
-   - Re-validate periodically
-   - Handle expired subscriptions gracefully
+5. **Implement Darkadia Import**
+   - CSV parsing
+   - Game matching algorithm
+   - Import preview and confirmation
+   - Error handling for unmatched games
 
-6. **Create Auth State Pages**
-   - `NotLoggedIn.js` - Link to Hub
-   - `NoSubscription.js` - Link to Hub subscription page
-   - `SessionExpired.js` - Link to Hub
+6. **Create Collection UI**
+   - List view with filters
+   - Game detail view
+   - Add/edit forms
+   - Import wizard
 
-7. **Implement Demo Chat**
-   - In-memory message store
-   - Real-time publication
-   - Simple chat UI component
+7. **Testing**
+   - Test with sample Darkadia exports
+   - Test large collections (1000+ games)
+   - Performance testing
 
-8. **Create Main Layout**
-   - Header with app name and user info
-   - "Return to Hub" link
-   - Footer
+**Estimated Effort:** 3-4 sessions
 
-9. **Documentation**
-   - Comprehensive README
-   - Inline code comments
-   - "How to Fork" guide
+---
 
-10. **Testing**
-    - Test SSO flow end-to-end
-    - Test subscription checking
-    - Test chat functionality
+### Phase 3: Backlog Beacon (3D Bookshelf)
 
-**Files to Create:**
+**Goal:** Add the 3D bookshelf visualization using Babylon JS.
 
-```
-spoke_app_skeleton/
-├── .meteor/
-│   └── packages
-├── client/
-│   ├── main.html
-│   ├── main.css
-│   └── main.js
-├── imports/
-│   ├── api/
-│   │   └── chat.js
-│   ├── hub/
-│   │   ├── client.js
-│   │   ├── ssoHandler.js
-│   │   └── subscriptions.js
-│   └── ui/
-│       ├── components/
-│       │   ├── ChatRoom.js
-│       │   ├── ChatMessage.js
-│       │   └── RequireSubscription.js
-│       ├── layouts/
-│       │   └── MainLayout.js
-│       └── pages/
-│           ├── HomePage.js
-│           ├── NotLoggedIn.js
-│           ├── NoSubscription.js
-│           └── SessionExpired.js
-├── lib/
-│   └── collections/
-│       └── chatMessages.js
-├── server/
-│   ├── main.js
-│   ├── publications.js
-│   ├── methods.js
-│   └── accounts.js
-├── .gitignore
-├── package.json
-├── settings.example.json
-└── README.md
-```
+**Tasks:**
 
-**Estimated Effort:** 2-3 sessions
+1. **Add Babylon JS**
+   - Install dependencies
+   - Set up scene and camera
+   - Basic lighting
+
+2. **Create Bookshelf Model**
+   - Shelf geometry
+   - Book slot positions
+   - Camera controls (pan, zoom)
+
+3. **Implement Flyweight Pattern**
+   - Mesh pool for books
+   - Virtual scrolling logic
+   - Texture management
+
+4. **Add Book Rendering**
+   - Book mesh with spine texture
+   - Cover art loading
+   - Placeholder for missing art
+
+5. **Add Interactivity**
+   - Click book to view details
+   - Hover effects
+   - Smooth scrolling
+
+6. **Performance Optimization**
+   - LOD (Level of Detail) for distant books
+   - Texture atlasing
+   - Lazy loading
+
+7. **Testing**
+   - Test with 5000+ game collection
+   - Test on various devices
+   - FPS monitoring
+
+**Estimated Effort:** 3-4 sessions
+
+---
+
+### Phase 4: Backlog Beacon (Platform Imports)
+
+**Goal:** Add ability to import from Steam, GOG, and other platforms.
+
+**Tasks:**
+
+1. **Steam Import**
+   - Steam Web API integration
+   - OAuth or API key setup
+   - Game matching to database
+
+2. **GOG Import**
+   - GOG Galaxy database reading
+   - Or GOG API if available
+
+3. **Other Platforms**
+   - Epic Games Store
+   - PlayStation (if API available)
+   - Xbox (if API available)
+   - Nintendo (manual likely)
+
+4. **Duplicate Detection**
+   - Identify same game across platforms
+   - Merge or keep separate options
+
+**Estimated Effort:** 2-3 sessions per platform
 
 ---
 
