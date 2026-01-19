@@ -13,11 +13,6 @@ export const AddGameModal = {
     this.notes = '';
     this.saving = false;
     this.error = null;
-    
-    // Pre-select first platform if available
-    if (this.game?.platforms?.length > 0) {
-      this.platforms = [this.game.platforms[0]];
-    }
   },
   
   async save(vnode) {
