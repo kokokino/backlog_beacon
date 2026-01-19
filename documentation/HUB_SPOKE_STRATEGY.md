@@ -459,6 +459,21 @@ Backlog Beacon includes a self‑hosted game database that periodically syncs wi
   - We will store only what metadata we care about in MongoDB and we will convert one cover art image into webp format (using the npm sharp package) and save on disk (using the Meteor ostrio:files package)
   - We will store the IGDB fields of `updated_at` and `checksum` so we can readily know when data changes and if we should update.
   - We will also store enough metadata to construct a URL to cover art at the IGDB CDN that we can use as a fallback if we cannot find our webp version locally on disk.
+  - Must have user facing attribution to IGDB.com because we integrate with the IGDB API. That is a licensing requirement
+
+**IGDB account creation:**
+  - Sign Up with Twitch for a free account: https://dev.twitch.tv/login
+  - Ensure you have Two Factor Authentication enabled: https://www.twitch.tv/settings/security
+  - Register your application in the Twitch Developer Portal: https://dev.twitch.tv/console/apps/create
+  - The OAuth Redirect URL field is not used by IGDB. Please add ’localhost’ to continue.
+  - The Client Type must be set to `Confidential` to generate Client Secrets
+  - Manage your newly created application: https://dev.twitch.tv/console/apps
+  - Generate a Client Secret by pressing [New Secret]
+  - Take note of the Client ID and Client Secret
+  - The IGDB.com API is free for non-commercial usage under the terms of the Twitch Developer Service Agreement: https://www.twitch.tv/p/legal/developer-agreement/
+  - Note: We offer commercial partnership for users with a commercial need in their projects. For more details on that process please reach out to partner@igdb.com
+
+
 
 **Implementation:**
 ```javascript
