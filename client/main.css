@@ -3,6 +3,9 @@
   --color-playing: #0d6efd;
   --color-completed: #198754;
   --color-abandoned: #dc3545;
+  /*--primary: #4a6fa5;
+  --secondary: #166088;*/
+  font-size: 16px; /*reduce font size somewhat*/
 }
 
 html, body {
