@@ -3,11 +3,39 @@
     "appName": "Backlog Beacon",
     "appId": "backlog_beacon",
     "hubUrl": "https://kokokino.com",
-    "requiredProducts": ["YOUR_METEOR_PRODUCT_COLLECTION_ID"]
+    "requiredProducts": ["YOUR_METEOR_PRODUCT_COLLECTION_ID"],
+    "storefronts": [
+      { "id": "steam", "name": "Steam", "category": "pc" },
+      { "id": "gog", "name": "GOG", "category": "pc" },
+      { "id": "epic", "name": "Epic Games Store", "category": "pc" },
+      { "id": "itch", "name": "itch.io", "category": "pc" },
+      { "id": "humble", "name": "Humble Store", "category": "pc" },
+      { "id": "gmg", "name": "Green Man Gaming", "category": "pc" },
+      { "id": "fanatical", "name": "Fanatical", "category": "pc" },
+      { "id": "origin", "name": "Origin (EA)", "category": "pc" },
+      { "id": "ubisoft", "name": "Ubisoft Connect", "category": "pc" },
+      { "id": "battlenet", "name": "Battle.net", "category": "pc" },
+      { "id": "microsoft", "name": "Microsoft Store", "category": "pc" },
+      { "id": "amazon", "name": "Amazon Games", "category": "pc" },
+      { "id": "luna", "name": "Luna", "category": "pc" },
+      { "id": "playstation", "name": "PlayStation Store", "category": "console" },
+      { "id": "xbox", "name": "Xbox Store", "category": "console" },
+      { "id": "nintendo", "name": "Nintendo eShop", "category": "console" },
+      { "id": "oculus", "name": "Oculus Store", "category": "vr" },
+      { "id": "meta", "name": "Meta Store", "category": "vr" },
+      { "id": "google", "name": "Google Play Store", "category": "mobile" },
+      { "id": "apple", "name": "Apple App Store", "category": "mobile" },
+      { "id": "physical", "name": "Physical Copy", "category": "other" },
+      { "id": "other", "name": "Other", "category": "other" }
+    ]
   },
   "private": {
     "hubApiKey": "YOUR_SPOKE_API_KEY_HERE",
     "hubApiUrl": "https://kokokino.com/api/spoke",
-    "hubPublicKey": "-----BEGIN PUBLIC KEY-----\nYOUR_HUB_PUBLIC_KEY_HERE\n-----END PUBLIC KEY-----"
+    "hubPublicKey": "-----BEGIN PUBLIC KEY-----\nYOUR_HUB_PUBLIC_KEY_HERE\n-----END PUBLIC KEY-----",
+    "igdb": {
+      "clientId": "YOUR_TWITCH_CLIENT_ID",
+      "clientSecret": "YOUR_TWITCH_CLIENT_SECRET"
+    }
   }
 }

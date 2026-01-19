@@ -4,6 +4,7 @@ import { check, Match } from 'meteor/check';
 import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems, COLLECTION_STATUSES } from '../imports/lib/collections/collectionItems.js';
 import { checkSubscription } from '../imports/hub/subscriptions.js';
+import { getValidStorefrontIds } from '../imports/lib/constants/storefronts.js';
 
 const rateLimiter = new Map();
 const RATE_LIMIT_WINDOW = 1000;
@@ -43,11 +44,24 @@ function validateRating(rating) {
   }
 }
 
+function validateStorefronts(storefronts) {
+  if (!storefronts || storefronts.length === 0) {
+    return [];
+  }
+  const validIds = getValidStorefrontIds();
+  return storefronts.filter(id => validIds.includes(id));
+}
+
 Meteor.methods({
-  async 'collection.addItem'(gameId, platform, status = 'backlog') {
+  async 'collection.addItem'(gameId, platform, status = 'backlog', options = {}) {
     check(gameId, String);
     check(platform, String);
     check(status, String);
+    check(options, {
+      storefronts: Match.Maybe([String]),
+      notes: Match.Maybe(String),
+      platforms: Match.Maybe([String])
+    });
     
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'You must be logged in');
@@ -61,25 +75,32 @@ Meteor.methods({
       throw new Meteor.Error('game-not-found', 'Game not found');
     }
     
+    // Check for existing item by gameId
     const existing = await CollectionItems.findOneAsync({
       userId: this.userId,
-      gameId: gameId,
-      platform: platform
+      gameId: gameId
     });
     
     if (existing) {
-      throw new Meteor.Error('duplicate-item', 'This game is already in your collection for this platform');
+      throw new Meteor.Error('duplicate-item', 'This game is already in your collection');
     }
     
     const now = new Date();
+    const storefronts = validateStorefronts(options.storefronts || []);
+    const platforms = options.platforms || [platform];
+    
     const itemId = await CollectionItems.insertAsync({
       userId: this.userId,
       gameId: gameId,
+      igdbId: game.igdbId || null,
+      gameName: game.title || game.name || '',
       platform: platform,
+      platforms: platforms,
+      storefronts: storefronts,
       status: status,
       rating: null,
       hoursPlayed: null,
-      notes: '',
+      notes: options.notes || '',
       dateAdded: now,
       dateStarted: null,
       dateCompleted: null,
@@ -102,7 +123,10 @@ Meteor.methods({
       dateStarted: Match.Maybe(Match.OneOf(Date, null)),
       dateCompleted: Match.Maybe(Match.OneOf(Date, null)),
       favorite: Match.Maybe(Boolean),
-      physical: Match.Maybe(Boolean)
+      physical: Match.Maybe(Boolean),
+      platform: Match.Maybe(String),
+      platforms: Match.Maybe([String]),
+      storefronts: Match.Maybe([String])
     });
     
     if (!this.userId) {
@@ -134,11 +158,21 @@ Meteor.methods({
       }
     }
     
-    if (updates.notes !== undefined && updates.notes.length > 5000) {
-      throw new Meteor.Error('notes-too-long', 'Notes cannot exceed 5000 characters');
+    if (updates.notes !== undefined && updates.notes.length > 10000) {
+      throw new Meteor.Error('notes-too-long', 'Notes cannot exceed 10000 characters');
+    }
+    
+    // Validate storefronts if provided
+    if (updates.storefronts !== undefined) {
+      updates.storefronts = validateStorefronts(updates.storefronts);
     }
     
     const updateFields = { ...updates, updatedAt: new Date() };
+    
+    // Auto-set dateCompleted when marking as completed
+    if (updates.status === 'completed' && !item.dateCompleted && !updates.dateCompleted) {
+      updateFields.dateCompleted = new Date();
+    }
     
     const result = await CollectionItems.updateAsync(itemId, { $set: updateFields });
     return result;
@@ -166,6 +200,69 @@ Meteor.methods({
     return result;
   },
   
+  async 'collection.toggleFavorite'(itemId) {
+    check(itemId, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+    
+    checkRateLimit(this.userId, 'collection.toggleFavorite');
+    
+    const item = await CollectionItems.findOneAsync(itemId);
+    if (!item) {
+      throw new Meteor.Error('item-not-found', 'Collection item not found');
+    }
+    
+    if (item.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized', 'You can only update your own collection items');
+    }
+    
+    await CollectionItems.updateAsync(itemId, {
+      $set: {
+        favorite: !item.favorite,
+        updatedAt: new Date()
+      }
+    });
+    
+    return !item.favorite;
+  },
+  
+  async 'collection.setStatus'(itemId, status) {
+    check(itemId, String);
+    check(status, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+    
+    checkRateLimit(this.userId, 'collection.setStatus');
+    validateStatus(status);
+    
+    const item = await CollectionItems.findOneAsync(itemId);
+    if (!item) {
+      throw new Meteor.Error('item-not-found', 'Collection item not found');
+    }
+    
+    if (item.userId !== this.userId) {
+      throw new Meteor.Error('not-authorized', 'You can only update your own collection items');
+    }
+    
+    const updateFields = {
+      status: status,
+      updatedAt: new Date()
+    };
+    
+    // Auto-set dateCompleted when marking as completed
+    if (status === 'completed' && !item.dateCompleted) {
+      updateFields.dateCompleted = new Date();
+    }
+    
+    await CollectionItems.updateAsync(itemId, { $set: updateFields });
+    
+    return true;
+  },
+  
   async 'collection.getStats'() {
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'You must be logged in');
@@ -181,12 +278,14 @@ Meteor.methods({
         backlog: 0,
         playing: 0,
         completed: 0,
-        abandoned: 0
+        abandoned: 0,
+        wishlist: 0
       },
       favorites: 0,
       totalHoursPlayed: 0,
       averageRating: null,
       platformCounts: {},
+      storefrontCounts: {},
       recentlyAdded: [],
       recentlyCompleted: []
     };
@@ -212,8 +311,15 @@ Meteor.methods({
         ratingCount++;
       }
       
-      if (item.platform) {
-        stats.platformCounts[item.platform] = (stats.platformCounts[item.platform] || 0) + 1;
+      // Count platforms (support both old and new format)
+      const platforms = item.platforms || (item.platform ? [item.platform] : []);
+      for (const platform of platforms) {
+        stats.platformCounts[platform] = (stats.platformCounts[platform] || 0) + 1;
+      }
+      
+      // Count storefronts
+      for (const storefront of (item.storefronts || [])) {
+        stats.storefrontCounts[storefront] = (stats.storefrontCounts[storefront] || 0) + 1;
       }
     }
     
@@ -254,7 +360,12 @@ Meteor.methods({
     const searchQuery = {};
     
     if (query && query.trim()) {
-      searchQuery.$text = { $search: query.trim() };
+      const searchTerm = query.trim();
+      searchQuery.$or = [
+        { title: { $regex: searchTerm, $options: 'i' } },
+        { name: { $regex: searchTerm, $options: 'i' } },
+        { searchName: { $regex: searchTerm.toLowerCase(), $options: 'i' } }
+      ];
     }
     
     if (options.platform) {
@@ -267,7 +378,7 @@ Meteor.methods({
     
     const games = await Games.find(searchQuery, {
       limit: limit,
-      sort: query ? { score: { $meta: 'textScore' } } : { title: 1 }
+      sort: { title: 1, name: 1 }
     }).fetchAsync();
     
     return games;
@@ -281,7 +392,9 @@ Meteor.methods({
     const sampleGames = [
       {
         title: 'The Legend of Zelda: Breath of the Wild',
+        name: 'The Legend of Zelda: Breath of the Wild',
         slug: 'the-legend-of-zelda-breath-of-the-wild',
+        searchName: 'the legend of zelda: breath of the wild',
         platforms: ['Nintendo Switch', 'Wii U'],
         releaseYear: 2017,
         developer: 'Nintendo EPD',
@@ -291,7 +404,9 @@ Meteor.methods({
       },
       {
         title: 'Elden Ring',
+        name: 'Elden Ring',
         slug: 'elden-ring',
+        searchName: 'elden ring',
         platforms: ['PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'PC'],
         releaseYear: 2022,
         developer: 'FromSoftware',
@@ -301,7 +416,9 @@ Meteor.methods({
       },
       {
         title: 'Hollow Knight',
+        name: 'Hollow Knight',
         slug: 'hollow-knight',
+        searchName: 'hollow knight',
         platforms: ['Nintendo Switch', 'PlayStation 4', 'Xbox One', 'PC', 'macOS', 'Linux'],
         releaseYear: 2017,
         developer: 'Team Cherry',
@@ -311,7 +428,9 @@ Meteor.methods({
       },
       {
         title: 'Stardew Valley',
+        name: 'Stardew Valley',
         slug: 'stardew-valley',
+        searchName: 'stardew valley',
         platforms: ['Nintendo Switch', 'PlayStation 4', 'Xbox One', 'PC', 'macOS', 'Linux', 'iOS', 'Android'],
         releaseYear: 2016,
         developer: 'ConcernedApe',
@@ -321,7 +440,9 @@ Meteor.methods({
       },
       {
         title: 'Hades',
+        name: 'Hades',
         slug: 'hades',
+        searchName: 'hades',
         platforms: ['Nintendo Switch', 'PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'PC', 'macOS'],
         releaseYear: 2020,
         developer: 'Supergiant Games',
@@ -331,7 +452,9 @@ Meteor.methods({
       },
       {
         title: 'Celeste',
+        name: 'Celeste',
         slug: 'celeste',
+        searchName: 'celeste',
         platforms: ['Nintendo Switch', 'PlayStation 4', 'Xbox One', 'PC', 'macOS', 'Linux'],
         releaseYear: 2018,
         developer: 'Maddy Makes Games',
@@ -341,7 +464,9 @@ Meteor.methods({
       },
       {
         title: 'Dark Souls III',
+        name: 'Dark Souls III',
         slug: 'dark-souls-iii',
+        searchName: 'dark souls iii',
         platforms: ['PlayStation 4', 'Xbox One', 'PC'],
         releaseYear: 2016,
         developer: 'FromSoftware',
@@ -351,7 +476,9 @@ Meteor.methods({
       },
       {
         title: 'Super Mario Odyssey',
+        name: 'Super Mario Odyssey',
         slug: 'super-mario-odyssey',
+        searchName: 'super mario odyssey',
         platforms: ['Nintendo Switch'],
         releaseYear: 2017,
         developer: 'Nintendo EPD',
@@ -361,7 +488,9 @@ Meteor.methods({
       },
       {
         title: 'The Witcher 3: Wild Hunt',
+        name: 'The Witcher 3: Wild Hunt',
         slug: 'the-witcher-3-wild-hunt',
+        searchName: 'the witcher 3: wild hunt',
         platforms: ['PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'PC'],
         releaseYear: 2015,
         developer: 'CD Projekt Red',
@@ -371,7 +500,9 @@ Meteor.methods({
       },
       {
         title: 'Persona 5 Royal',
+        name: 'Persona 5 Royal',
         slug: 'persona-5-royal',
+        searchName: 'persona 5 royal',
         platforms: ['PlayStation 5', 'PlayStation 4', 'Xbox Series X|S', 'Xbox One', 'Nintendo Switch', 'PC'],
         releaseYear: 2020,
         developer: 'Atlus',
@@ -390,8 +521,9 @@ Meteor.methods({
         await Games.insertAsync({
           ...game,
           coverImageId: null,
+          coverUrl: null,
           igdbCoverUrl: null,
-          igdbId: Random.id(),
+          igdbId: null,
           igdbUpdatedAt: null,
           igdbChecksum: null,
           createdAt: now,
