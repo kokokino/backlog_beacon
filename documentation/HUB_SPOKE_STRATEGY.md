@@ -438,16 +438,27 @@ Backlog Beacon is a video game collection management app, similar to Darkadia or
 
 ### Key Features
 
-#### 1. Game Database (Self-Hosted)
+#### 1. Game Database (Self-Hosted with periodic updates)
 
-Instead of relying on external APIs, Backlog Beacon will use a self-hosted open source game database.
+Backlog Beacon includes a self‑hosted game database that periodically syncs with IGDB.
 
-**Options to evaluate:**
-- **IGDB Data Export** - Comprehensive but may have licensing restrictions
-- **OpenVGDB** - SQLite database, good for retro games
-- **TheGamesDB** - XML dumps available
-- **MobyGames** - Has data dumps for approved projects
-- **LaunchBox** - XML database, very comprehensive
+**IGDB resources:**
+  - https://www.igdb.com/api
+  - https://api-docs.igdb.com/#requests
+  - https://github.com/twitchtv/node-apicalypse
+  - https://discuss.dev.twitch.com/t/igdb-store-all-games-in-local-database/47241/5
+  - https://medium.com/@zhonghong9998/unlock-efficient-gaming-data-extraction-a-comprehensive-guide-to-igdb-postman-and-twitch-9fe44e4d1586
+
+**IGDB integration key points:**
+  - We need rate limiting because we cannot query IGDB more than 4 times per second. So we need to funnel all activity and requests through this rate limiter. 
+  - We are encouraged to batch our requests for up to 500 video game titles at once
+  - Because the entire IGDB is over 50 GB we will only store locally what our users actually have in their backlog by fetching and caching on demand
+  - We will first query our local database for user imports and serving user data but if we cannot find data there we will query IGDB and update our local data. 
+  - We will refresh all the video game data and cover art that we save locally on server startup
+  - We will refresh all the video game data once every 24 hours in a repeated server process
+  - We will store only what metadata we care about in MongoDB and we will convert one cover art image into webp format (using the npm sharp package) and save on disk (using the Meteor ostrio:files package)
+  - We will store the IGDB fields of `updated_at` and `checksum` so we can readily know when data changes and if we should update.
+  - We will also store enough metadata to construct a URL to cover art at the IGDB CDN that we can use as a fallback if we cannot find our webp version locally on disk.
 
 **Implementation:**
 ```javascript
@@ -683,35 +694,46 @@ hub/
    - Update app name and settings
    - Verify SSO still works
 
-2. **Design Data Models**
+2. **Add Dependencies**
+   - `meteor add ostrio:files` for serving images from disk
+   - `meteor npm install sharp` for converting images from JPEG to WEBP
+
+3. **Design Data Models**
    - `Games` collection (database)
    - `CollectionItems` collection (user data)
    - Indexes for performance
 
-3. **Implement Game Database**
+4. **Implement Game Database**
    - Choose and integrate open source DB
    - Create import/sync scripts
    - Admin controls for updates
 
-4. **Implement Collection CRUD**
+5. **Implement Collection CRUD**
    - Add game to collection
    - Update status/rating/notes
    - Remove from collection
    - List/filter/sort collection
+   - Prevent duplicates
 
-5. **Implement Darkadia Import**
+6. **Implement Darkadia Import**
    - CSV parsing
    - Game matching algorithm
    - Import preview and confirmation
    - Error handling for unmatched games
+   - Prevent duplicates
 
-6. **Create Collection UI**
+7. **Implement Simple Import**
+   - Accept a list of Storefront and game title to be imported
+   - Try to make this a specialized version of the Darkadia import so we don't re-invent the wheel and can reuse code.
+
+8. **Create Collection UI**
    - List view with filters
-   - Game detail view
+   - Game detail view using flyweight pattern
    - Add/edit forms
    - Import wizard
+   - Prevent duplicates
 
-7. **Testing**
+9. **Testing**
    - Test with sample Darkadia exports
    - Test large collections (1000+ games)
    - Performance testing

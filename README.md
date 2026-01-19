@@ -86,6 +86,8 @@ We focus on simplicity as a super‑power:
 | **Mithril JS v2.3** | General UI, using JavaScript to craft HTML |
 | **Pico CSS** | Concise HTML that looks good with minimal effort |
 | **Babylon JS v8** | 3D rendering and physics (with Havok JS built‑in) |
+| **ostrio:files** | For serving images from disk |
+| **sharp** | For converting images from JPEG to WEBP |
 
 ### Installation
 
@@ -225,14 +227,7 @@ backlog_beacon/
 
 ## Game Database                                           
 
-Backlog Beacon includes a self‑hosted game database to avoid reliance on external APIs. The database is populated from open‑source sources and can be updated periodically.
-
-**Current data sources under consideration:**
-- **IGDB Data Export** – Comprehensive but may have licensing restrictions
-- **OpenVGDB** – SQLite database, good for retro games
-- **TheGamesDB** – XML dumps available
-- **MobyGames** – Data dumps for approved projects         
-- **LaunchBox** – XML database, very comprehensive
+Backlog Beacon includes a self‑hosted game database that periodically syncs with IGDB.
                                                    
 **Updating the database:**
 ```bash
