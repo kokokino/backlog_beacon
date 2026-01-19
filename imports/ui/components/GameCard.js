@@ -1,6 +1,35 @@
 import m from 'mithril';
 import { STATUS_LABELS } from '../../lib/collections/collectionItems.js';
 
+// Helper to get the best available cover URL for a game
+function getGameCoverUrl(game) {
+  if (!game) {
+    return null;
+  }
+  
+  // If we have a local cover, construct the URL
+  if (game.localCoverId) {
+    return `/cdn/storage/gameCovers/${game.localCoverId}/original/${game.localCoverId}.webp`;
+  }
+  
+  // Fall back to IGDB URL
+  if (game.coverImageId) {
+    return `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
+  }
+  
+  // Try legacy igdbCoverUrl field
+  if (game.igdbCoverUrl) {
+    return game.igdbCoverUrl;
+  }
+  
+  // Try coverUrl field (may be set by caller)
+  if (game.coverUrl) {
+    return game.coverUrl;
+  }
+  
+  return null;
+}
+
 export const GameCard = {
   view(vnode) {
     const { game, collectionItem, onAddToCollection, onUpdateItem, onRemoveItem, showActions = true } = vnode.attrs;
@@ -11,11 +40,9 @@ export const GameCard = {
     
     // Use an SVG placeholder with a light gray background and "No Cover" text
     const placeholderSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
-    const coverUrl = game.coverImageId 
-      ? `/covers/${game.coverImageId}.webp`
-      : game.igdbCoverUrl 
-        ? game.igdbCoverUrl 
-        : placeholderSvg;
+    
+    // Get cover URL using helper, with fallback to placeholder
+    const coverUrl = getGameCoverUrl(game) || placeholderSvg;
     
     const renderStars = (rating) => {
       const stars = [];
@@ -51,17 +78,19 @@ export const GameCard = {
       m('div.game-cover', [
         m('img', { 
           src: coverUrl, 
-          alt: game.title,
+          alt: game.title || game.name,
           loading: 'lazy',
           onerror(event) {
             // If a real image fails to load, fall back to the SVG placeholder
             event.target.src = placeholderSvg;
           }
-        })
+        }),
+        // Show indicator if using local cover
+        game.localCoverId && m('span.local-cover-badge', { title: 'Cached locally' }, '💾')
       ]),
       
       m('div.game-info', [
-        m('h4.game-title', game.title),
+        m('h4.game-title', game.title || game.name),
         
         game.releaseYear && m('p.game-year', game.releaseYear),
         

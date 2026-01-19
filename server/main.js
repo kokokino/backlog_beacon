@@ -12,6 +12,9 @@ import './publications.js';
 import './igdb/client.js';
 import './igdb/gameCache.js';
 
+// Import cover image handling
+import { startCoverProcessor } from './covers/index.js';
+
 // Import additional methods
 import './methods/igdbMethods.js';
 import './methods/importMethods.js';
@@ -72,6 +75,10 @@ Meteor.startup(async () => {
     console.error('Error running migrations:', error);
     console.error('Error stack:', error.stack);
   }
+  
+  // Start cover image processor
+  console.log('Starting cover image processor...');
+  startCoverProcessor();
   
   // Debug: Check collection counts
   const gamesCount = await Games.find().countAsync();
