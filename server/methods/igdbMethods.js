@@ -6,7 +6,7 @@ import { Games } from '../../imports/lib/collections/games.js';
 
 // Rate limiting
 const searchRateLimiter = new Map();
-const SEARCH_RATE_LIMIT_MS = 500; // 500ms between searches per user
+const SEARCH_RATE_LIMIT_MS = 500;
 
 function checkSearchRateLimit(userId) {
   const now = Date.now();
@@ -19,8 +19,47 @@ function checkSearchRateLimit(userId) {
   searchRateLimiter.set(userId, now);
 }
 
+function transformIgdbGameForCache(igdbGame) {
+  const developers = igdbGame.involved_companies?.filter(ic => ic.developer) || [];
+  const publishers = igdbGame.involved_companies?.filter(ic => ic.publisher) || [];
+  
+  const releaseDate = igdbGame.first_release_date 
+    ? new Date(igdbGame.first_release_date * 1000) 
+    : null;
+  
+  return {
+    igdbId: igdbGame.id,
+    title: igdbGame.name,
+    name: igdbGame.name,
+    slug: igdbGame.slug,
+    summary: igdbGame.summary || '',
+    storyline: igdbGame.storyline || '',
+    platforms: igdbGame.platforms?.map(p => p.name) || [],
+    platformIds: igdbGame.platforms?.map(p => p.id) || [],
+    genres: igdbGame.genres?.map(g => g.name) || [],
+    genreIds: igdbGame.genres?.map(g => g.id) || [],
+    themes: [],
+    releaseDate: releaseDate,
+    releaseYear: releaseDate ? releaseDate.getFullYear() : null,
+    developer: developers[0]?.company?.name || '',
+    developerIds: developers.map(d => d.company?.id).filter(Boolean),
+    publisher: publishers[0]?.company?.name || '',
+    publisherIds: publishers.map(p => p.company?.id).filter(Boolean),
+    coverImageId: igdbGame.cover?.image_id || null,
+    igdbCoverUrl: igdbGame.cover?.image_id ? getCoverUrl(igdbGame.cover.image_id) : null,
+    rating: igdbGame.rating || null,
+    ratingCount: igdbGame.rating_count || 0,
+    aggregatedRating: igdbGame.aggregated_rating || null,
+    aggregatedRatingCount: igdbGame.aggregated_rating_count || 0,
+    igdbUpdatedAt: igdbGame.updated_at || null,
+    igdbChecksum: igdbGame.checksum || null,
+    searchName: igdbGame.name.toLowerCase(),
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+}
+
 Meteor.methods({
-  // Search for games via IGDB
   async 'igdb.search'(query) {
     check(query, String);
     
@@ -40,7 +79,6 @@ Meteor.methods({
     
     const results = await searchGames(query, 20);
     
-    // Transform results for client
     return results.map(game => ({
       igdbId: game.id,
       name: game.name,
@@ -54,7 +92,62 @@ Meteor.methods({
     }));
   },
   
-  // Get or fetch a game by IGDB ID
+  async 'igdb.searchAndCache'(query) {
+    check(query, String);
+    
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to search');
+    }
+    
+    if (!isConfigured()) {
+      throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
+    }
+    
+    checkSearchRateLimit(this.userId);
+    
+    if (query.trim().length < 3) {
+      return [];
+    }
+    
+    const igdbResults = await searchGames(query, 20);
+    
+    if (igdbResults.length === 0) {
+      return [];
+    }
+    
+    const cachedGames = [];
+    
+    for (const igdbGame of igdbResults) {
+      let existingGame = await Games.findOneAsync({ igdbId: igdbGame.id });
+      
+      if (existingGame) {
+        cachedGames.push(existingGame);
+        continue;
+      }
+      
+      const gameData = transformIgdbGameForCache(igdbGame);
+      
+      try {
+        const gameId = await Games.insertAsync(gameData);
+        const newGame = await Games.findOneAsync(gameId);
+        if (newGame) {
+          cachedGames.push(newGame);
+        }
+      } catch (error) {
+        if (error.message && error.message.includes('duplicate key')) {
+          existingGame = await Games.findOneAsync({ igdbId: igdbGame.id });
+          if (existingGame) {
+            cachedGames.push(existingGame);
+          }
+        } else {
+          console.error('Error caching game:', error);
+        }
+      }
+    }
+    
+    return cachedGames;
+  },
+  
   async 'igdb.getGame'(igdbId) {
     check(igdbId, Number);
     
@@ -71,7 +164,6 @@ Meteor.methods({
     return game;
   },
   
-  // Search and cache a game by name
   async 'igdb.findGame'(name, platform) {
     check(name, String);
     check(platform, Match.Maybe(String));
@@ -81,7 +173,6 @@ Meteor.methods({
     }
     
     if (!isConfigured()) {
-      // Return null if IGDB not configured - allows offline operation
       return null;
     }
     
@@ -90,18 +181,14 @@ Meteor.methods({
     return game;
   },
   
-  // Check if IGDB is configured
   'igdb.isConfigured'() {
     return isConfigured();
   },
   
-  // Admin: Refresh stale game data
   async 'admin.refreshGameData'() {
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in');
     }
-    
-    // TODO: Add admin check
     
     if (!isConfigured()) {
       throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
@@ -112,7 +199,6 @@ Meteor.methods({
     return result;
   },
   
-  // Get game from local cache only
   async 'games.getById'(gameId) {
     check(gameId, String);
     
@@ -123,7 +209,6 @@ Meteor.methods({
     return Games.findOneAsync(gameId);
   },
   
-  // Search local game cache
   async 'games.searchLocal'(query) {
     check(query, String);
     

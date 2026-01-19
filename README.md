@@ -86,6 +86,7 @@ We focus on simplicity as a super‑power:
 | **Mithril JS v2.3** | General UI, using JavaScript to craft HTML |
 | **Pico CSS** | Concise HTML that looks good with minimal effort |
 | **Babylon JS v8** | 3D rendering and physics (with Havok JS built‑in) |
+| **quave:migrations** | For managing changes to the database |
 | **ostrio:files** | For serving images from disk |
 | **sharp** | For converting images from JPEG to WEBP |
 

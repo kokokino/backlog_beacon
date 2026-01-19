@@ -3,9 +3,8 @@
   --color-playing: #0d6efd;
   --color-completed: #198754;
   --color-abandoned: #dc3545;
-  /*--primary: #4a6fa5;
-  --secondary: #166088;*/
-  font-size: 16px; /*reduce font size somewhat*/
+  --color-wishlist: #ffc107;
+  font-size: 16px;
 }
 
 html, body {
@@ -228,6 +227,11 @@ header nav a.logout {
   color: white;
 }
 
+.badge.wishlist {
+  background: var(--color-wishlist);
+  color: black;
+}
+
 .favorite-badge,
 .physical-badge {
   font-size: 0.875rem;
@@ -343,6 +347,7 @@ header nav a.logout {
 .status-bar-fill.playing { background: var(--color-playing); }
 .status-bar-fill.completed { background: var(--color-completed); }
 .status-bar-fill.abandoned { background: var(--color-abandoned); }
+.status-bar-fill.wishlist { background: var(--color-wishlist); }
 
 .platform-list {
   display: flex;
@@ -435,6 +440,13 @@ dialog article footer button {
   width: 100%;
 }
 
+.search-hint {
+  text-align: center;
+  color: var(--pico-muted-color);
+  font-size: 0.875rem;
+  margin-top: 1rem;
+}
+
 .button-group {
   display: flex;
   gap: 1rem;
@@ -471,6 +483,60 @@ dialog article footer button {
   padding: 3rem;
 }
 
+/* Browse page sections */
+.browse-page section {
+  margin-bottom: 2rem;
+}
+
+.browse-page .section-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.browse-page .section-title .result-count {
+  font-size: 0.875rem;
+  font-weight: normal;
+  color: var(--pico-muted-color);
+}
+
+.browse-page .section-title .igdb-attribution {
+  font-size: 0.75rem;
+  font-weight: normal;
+  color: var(--pico-muted-color);
+  margin-left: auto;
+}
+
+.browse-page .section-title .igdb-attribution a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.browse-page .igdb-results {
+  padding-top: 1rem;
+  border-top: 2px solid var(--pico-muted-border-color);
+  margin-top: 1rem;
+}
+
+.browse-page .error-state {
+  text-align: center;
+  padding: 2rem;
+}
+
+.browse-page .error-state .error-message {
+  margin-bottom: 1rem;
+}
+
+.browse-page .pending-state {
+  text-align: center;
+  padding: 2rem;
+  color: var(--pico-muted-color);
+}
+
 @media (max-width: 768px) {
   header nav {
     flex-direction: column;
@@ -504,5 +570,14 @@ dialog article footer button {
   
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .browse-page .section-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .browse-page .section-title .igdb-attribution {
+    margin-left: 0;
   }
 }
