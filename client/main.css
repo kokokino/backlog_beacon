@@ -411,6 +411,12 @@ dialog article footer button {
   margin-bottom: 1rem;
 }
 
+.rating-select > label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: bold;
+}
+
 .star-buttons {
   display: flex;
   gap: 0.5rem;
@@ -418,18 +424,31 @@ dialog article footer button {
 }
 
 .star-btn {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.875rem;
   background: var(--pico-secondary-background);
-  border: 1px solid var(--pico-muted-border-color);
-  border-radius: var(--pico-border-radius);
-  cursor: pointer;
+}
+
+.star-btn:hover {
+  background: var(--pico-secondary-hover-background);
+  border-color: var(--pico-primary);
+  border: 7px solid black;
+}
+
+.star-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.25);
 }
 
 .star-btn.selected {
+  color: var(--pico-primary-inverse);
   background: var(--pico-primary);
-  color: white;
   border-color: var(--pico-primary);
+  border: 7px solid gold;
+  font-weight: bold;
+}
+
+.star-btn.selected:hover {
+  background: var(--pico-primary-hover);
+  border-color: var(--pico-primary-hover);
 }
 
 .search-bar {
