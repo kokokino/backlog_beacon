@@ -2,6 +2,7 @@ import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
 import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems } from '../imports/lib/collections/collectionItems.js';
+import { Storefronts } from '../imports/lib/collections/storefronts.js';
 
 // Publish user's collection with filters
 Meteor.publish('userCollection', function(options = {}) {
@@ -289,5 +290,23 @@ Meteor.publish('collectionStorefronts', function() {
   return CollectionItems.find(
     { userId: this.userId },
     { fields: { storefronts: 1 } }
+  );
+});
+
+// Publish all active storefronts
+Meteor.publish('storefronts', function() {
+  return Storefronts.find(
+    { isActive: true },
+    { sort: { sortOrder: 1 } }
+  );
+});
+
+// Publish storefronts by category
+Meteor.publish('storefrontsByCategory', function(category) {
+  check(category, String);
+  
+  return Storefronts.find(
+    { isActive: true, category: category },
+    { sort: { sortOrder: 1 } }
   );
 });

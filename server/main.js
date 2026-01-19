@@ -1,6 +1,8 @@
 import { Meteor } from 'meteor/meteor';
+import { Migrations } from 'meteor/quave:migrations';
 import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems } from '../imports/lib/collections/collectionItems.js';
+import { Storefronts } from '../imports/lib/collections/storefronts.js';
 
 import './accounts.js';
 import './methods.js';
@@ -16,6 +18,17 @@ import './methods/importMethods.js';
 
 // Import scheduled jobs
 import './scheduled/gameRefresh.js';
+
+// Import migrations
+import './migrations/0_steps.js';
+
+// Configure migrations
+Migrations.config({
+  log: true,
+  logger: null,
+  logIfLatest: true,
+  collectionName: 'migrations'
+});
 
 Meteor.startup(async () => {
   console.log('Backlog Beacon server starting...');
@@ -42,36 +55,29 @@ Meteor.startup(async () => {
     console.warn('Warning: IGDB credentials not configured - game search will be limited to local cache');
   }
   
-  // Create Games collection indexes
+  // Run migrations
+  console.log('=== MIGRATIONS STARTUP ===');
+  console.log('Checking for pending migrations...');
+  
   try {
-    await Games.createIndexAsync({ igdbId: 1 }, { unique: true, sparse: true });
-    await Games.createIndexAsync({ title: 'text', name: 'text', searchName: 'text' });
-    await Games.createIndexAsync({ searchName: 1 });
-    await Games.createIndexAsync({ slug: 1 });
-    await Games.createIndexAsync({ platforms: 1 });
-    await Games.createIndexAsync({ genres: 1 });
-    await Games.createIndexAsync({ releaseYear: 1 });
-    await Games.createIndexAsync({ updatedAt: 1 });
-    console.log('Games collection indexes created');
+    const currentVersion = await Migrations.getVersion();
+    console.log('Current migration version in DB:', currentVersion);
+    
+    console.log('Attempting to migrate to latest...');
+    await Migrations.migrateTo('latest');
+    
+    const newVersion = await Migrations.getVersion();
+    console.log(`✓ Migrations completed successfully. Now at version ${newVersion}`);
   } catch (error) {
-    console.error('Error creating Games indexes:', error.message);
+    console.error('Error running migrations:', error);
+    console.error('Error stack:', error.stack);
   }
   
-  // Create CollectionItems collection indexes
-  try {
-    await CollectionItems.createIndexAsync({ userId: 1 });
-    await CollectionItems.createIndexAsync({ userId: 1, gameId: 1 }, { unique: true, sparse: true });
-    await CollectionItems.createIndexAsync({ userId: 1, igdbId: 1 });
-    await CollectionItems.createIndexAsync({ userId: 1, status: 1 });
-    await CollectionItems.createIndexAsync({ userId: 1, favorite: 1 });
-    await CollectionItems.createIndexAsync({ userId: 1, platforms: 1 });
-    await CollectionItems.createIndexAsync({ userId: 1, storefronts: 1 });
-    await CollectionItems.createIndexAsync({ gameId: 1 });
-    await CollectionItems.createIndexAsync({ gameName: 1 });
-    console.log('CollectionItems collection indexes created');
-  } catch (error) {
-    console.error('Error creating CollectionItems indexes:', error.message);
-  }
+  // Debug: Check collection counts
+  const gamesCount = await Games.find().countAsync();
+  const collectionItemsCount = await CollectionItems.find().countAsync();
+  const storefrontsCount = await Storefronts.find().countAsync();
+  console.log(`Database status: ${gamesCount} games, ${collectionItemsCount} collection items, ${storefrontsCount} storefronts`);
   
   console.log('Backlog Beacon server started');
 });
