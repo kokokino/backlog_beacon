@@ -2,10 +2,13 @@ import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
 import { COLLECTION_STATUSES, STATUS_LABELS } from '../../lib/collections/collectionItems.js';
 import { StorefrontSelect } from './StorefrontSelect.js';
+import { PlatformSelect } from './PlatformSelect.js';
 
 export const EditItemModal = {
   oninit(vnode) {
     const item = vnode.attrs.item;
+    const game = vnode.attrs.game;
+    
     this.status = item?.status || COLLECTION_STATUSES.BACKLOG;
     this.rating = item?.rating || null;
     this.hoursPlayed = item?.hoursPlayed || '';
@@ -13,12 +16,30 @@ export const EditItemModal = {
     this.favorite = item?.favorite || false;
     this.physical = item?.physical || false;
     this.storefronts = item?.storefronts || [];
+    
+    // Handle platforms - support both old single platform and new array format
+    if (item?.platforms && item.platforms.length > 0) {
+      this.platforms = [...item.platforms];
+    } else if (item?.platform) {
+      this.platforms = [item.platform];
+    } else {
+      this.platforms = [];
+    }
+    
+    // Store game platforms for suggestions
+    this.gamePlatforms = game?.platforms || [];
+    
     this.saving = false;
     this.error = null;
   },
   
   async save(vnode) {
     const { item, onClose, onSuccess } = vnode.attrs;
+    
+    if (this.platforms.length === 0) {
+      this.error = 'Please select at least one platform';
+      return;
+    }
     
     this.saving = true;
     this.error = null;
@@ -31,7 +52,9 @@ export const EditItemModal = {
       notes: this.notes,
       favorite: this.favorite,
       physical: this.physical,
-      storefronts: this.storefronts
+      storefronts: this.storefronts,
+      platforms: this.platforms,
+      platform: this.platforms[0] || ''
     };
     
     if (this.status === COLLECTION_STATUSES.COMPLETED && item.status !== COLLECTION_STATUSES.COMPLETED) {
@@ -101,8 +124,7 @@ export const EditItemModal = {
         ]),
         
         m('p', [
-          m('strong', game?.title || item?.gameName || 'Unknown Game'),
-          item.platform && m('span', ` (${item.platform})`)
+          m('strong', game?.title || game?.name || item?.gameName || 'Unknown Game')
         ]),
         
         this.error && m('p.error-message', this.error),
@@ -125,6 +147,16 @@ export const EditItemModal = {
               m('option', { value }, label)
             ))
           ]),
+          
+          m(PlatformSelect, {
+            value: this.platforms,
+            onChange: (newValue) => {
+              this.platforms = newValue;
+            },
+            disabled: this.saving,
+            label: 'Platforms',
+            gamePlatforms: this.gamePlatforms
+          }),
           
           renderRatingSelect(),
           

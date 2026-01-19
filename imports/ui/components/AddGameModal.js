@@ -1,21 +1,30 @@
 import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
 import { COLLECTION_STATUSES, STATUS_LABELS } from '../../lib/collections/collectionItems.js';
+import { PlatformSelect } from './PlatformSelect.js';
+import { StorefrontSelect } from './StorefrontSelect.js';
 
 export const AddGameModal = {
   oninit(vnode) {
     this.game = vnode.attrs.game;
-    this.platform = this.game?.platforms?.[0] || '';
+    this.platforms = [];
+    this.storefronts = [];
     this.status = COLLECTION_STATUSES.BACKLOG;
+    this.notes = '';
     this.saving = false;
     this.error = null;
+    
+    // Pre-select first platform if available
+    if (this.game?.platforms?.length > 0) {
+      this.platforms = [this.game.platforms[0]];
+    }
   },
   
   async save(vnode) {
     const { onClose, onSuccess } = vnode.attrs;
     
-    if (!this.platform) {
-      this.error = 'Please select a platform';
+    if (this.platforms.length === 0) {
+      this.error = 'Please select at least one platform';
       return;
     }
     
@@ -24,7 +33,12 @@ export const AddGameModal = {
     m.redraw();
     
     try {
-      await Meteor.callAsync('collection.addItem', this.game._id, this.platform, this.status);
+      await Meteor.callAsync('collection.addItem', this.game._id, this.platforms[0], this.status, {
+        platforms: this.platforms,
+        storefronts: this.storefronts,
+        notes: this.notes
+      });
+      
       if (onSuccess) {
         onSuccess();
       }
@@ -63,7 +77,7 @@ export const AddGameModal = {
         ]),
         
         m('p', [
-          m('strong', game.title),
+          m('strong', game.title || game.name),
           game.releaseYear && m('span', ` (${game.releaseYear})`)
         ]),
         
@@ -75,21 +89,24 @@ export const AddGameModal = {
             this.save(vnode);
           }
         }, [
-          m('label', [
-            'Platform',
-            m('select', {
-              value: this.platform,
-              disabled: this.saving,
-              onchange: (event) => {
-                this.platform = event.target.value;
-              }
-            }, [
-              m('option', { value: '' }, '-- Select Platform --'),
-              ...(game.platforms || []).map(platform => 
-                m('option', { value: platform }, platform)
-              )
-            ])
-          ]),
+          m(PlatformSelect, {
+            value: this.platforms,
+            onChange: (newValue) => {
+              this.platforms = newValue;
+            },
+            disabled: this.saving,
+            label: 'Platforms',
+            gamePlatforms: game.platforms || []
+          }),
+          
+          m(StorefrontSelect, {
+            value: this.storefronts,
+            onChange: (newValue) => {
+              this.storefronts = newValue;
+            },
+            disabled: this.saving,
+            label: 'Purchased From'
+          }),
           
           m('label', [
             'Status',
@@ -102,6 +119,20 @@ export const AddGameModal = {
             }, Object.entries(STATUS_LABELS).map(([value, label]) =>
               m('option', { value }, label)
             ))
+          ]),
+          
+          m('label', [
+            'Notes',
+            m('textarea', {
+              value: this.notes,
+              rows: 2,
+              maxlength: 10000,
+              disabled: this.saving,
+              placeholder: 'Optional notes...',
+              oninput: (event) => {
+                this.notes = event.target.value;
+              }
+            })
           ]),
           
           m('footer', [
