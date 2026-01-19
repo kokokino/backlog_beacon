@@ -65,6 +65,8 @@ export const MainLayout = {
         m('small', [
           '© ', new Date().getFullYear(), ' Kokokino • ',
           m('a', { href: hubUrl }, 'Hub'),
+          ' • ',
+          m('a', { href: 'https://github.com/kokokino/backlog_beacon', target: '_blank', rel: 'noopener' }, 'GitHub'), 
           ' • Game data powered by ',
           m('a', { href: 'https://www.igdb.com', target: '_blank', rel: 'noopener' }, 'IGDB.com')
         ])
