@@ -1,4 +1,5 @@
 import { Meteor } from 'meteor/meteor';
+import { Random } from 'meteor/random';
 import { check, Match } from 'meteor/check';
 import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems, COLLECTION_STATUSES } from '../imports/lib/collections/collectionItems.js';
@@ -390,7 +391,7 @@ Meteor.methods({
           ...game,
           coverImageId: null,
           igdbCoverUrl: null,
-          igdbId: null,
+          igdbId: Random.id(),
           igdbUpdatedAt: null,
           igdbChecksum: null,
           createdAt: now,
