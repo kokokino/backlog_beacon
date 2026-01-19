@@ -1,6 +1,7 @@
 import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
 import { COLLECTION_STATUSES, STATUS_LABELS } from '../../lib/collections/collectionItems.js';
+import { StorefrontSelect } from './StorefrontSelect.js';
 
 export const EditItemModal = {
   oninit(vnode) {
@@ -11,6 +12,7 @@ export const EditItemModal = {
     this.notes = item?.notes || '';
     this.favorite = item?.favorite || false;
     this.physical = item?.physical || false;
+    this.storefronts = item?.storefronts || [];
     this.saving = false;
     this.error = null;
   },
@@ -28,7 +30,8 @@ export const EditItemModal = {
       hoursPlayed: this.hoursPlayed ? parseFloat(this.hoursPlayed) : null,
       notes: this.notes,
       favorite: this.favorite,
-      physical: this.physical
+      physical: this.physical,
+      storefronts: this.storefronts
     };
     
     if (this.status === COLLECTION_STATUSES.COMPLETED && item.status !== COLLECTION_STATUSES.COMPLETED) {
@@ -98,7 +101,7 @@ export const EditItemModal = {
         ]),
         
         m('p', [
-          m('strong', game?.title || 'Unknown Game'),
+          m('strong', game?.title || item?.gameName || 'Unknown Game'),
           item.platform && m('span', ` (${item.platform})`)
         ]),
         
@@ -138,12 +141,21 @@ export const EditItemModal = {
             })
           ]),
           
+          m(StorefrontSelect, {
+            value: this.storefronts,
+            onChange: (newValue) => {
+              this.storefronts = newValue;
+            },
+            disabled: this.saving,
+            label: 'Purchased From'
+          }),
+          
           m('label', [
             'Notes',
             m('textarea', {
               value: this.notes,
               rows: 3,
-              maxlength: 5000,
+              maxlength: 10000,
               disabled: this.saving,
               oninput: (event) => {
                 this.notes = event.target.value;
