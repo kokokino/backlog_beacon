@@ -9,13 +9,13 @@ export const GameCard = {
       return m('article.game-card', m('p', 'Game not found'));
     }
     
-    // Use a transparent 1x1 PNG as a placeholder to avoid network requests
-    const transparentPixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    // Use an SVG placeholder with a light gray background and "No Cover" text
+    const placeholderSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
     const coverUrl = game.coverImageId 
       ? `/covers/${game.coverImageId}.webp`
       : game.igdbCoverUrl 
         ? game.igdbCoverUrl 
-        : transparentPixel;
+        : placeholderSvg;
     
     const renderStars = (rating) => {
       const stars = [];
@@ -43,8 +43,8 @@ export const GameCard = {
           alt: game.title,
           loading: 'lazy',
           onerror(event) {
-            // If a real image fails to load, fall back to the transparent pixel (no network)
-            event.target.src = transparentPixel;
+            // If a real image fails to load, fall back to the SVG placeholder
+            event.target.src = placeholderSvg;
           }
         })
       ]),
