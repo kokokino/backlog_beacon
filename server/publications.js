@@ -44,13 +44,14 @@ Meteor.publish('userCollection', function(options = {}) {
   return CollectionItems.find(query, findOptions);
 });
 
-Meteor.publish('collectionGames', function() {
+Meteor.publish('collectionGames', async function() {
   if (!this.userId) {
     this.ready();
     return;
   }
   
-  const items = CollectionItems.find({ userId: this.userId }).fetch();
+  const itemsCursor = CollectionItems.find({ userId: this.userId });
+  const items = await itemsCursor.fetchAsync();
   const gameIds = items.map(item => item.gameId);
   
   if (gameIds.length > 0) {
