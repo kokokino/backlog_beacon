@@ -12,6 +12,7 @@ const BrowseContent = {
     this.games = [];
     this.collectionGameIds = new Set();
     this.searchQuery = '';
+    this.inputValue = '';
     this.loading = true;
     this.addingGame = null;
     this.subscription = null;
@@ -86,12 +87,15 @@ const BrowseContent = {
       m('div.search-bar', [
         m('input[type=search]', {
           placeholder: 'Search games...',
-          value: this.searchQuery,
+          value: this.inputValue,
           oninput: (event) => {
+            this.inputValue = event.target.value;
+            
             if (this.searchTimeout) {
               clearTimeout(this.searchTimeout);
             }
-            const query = event.target.value;
+            
+            const query = this.inputValue;
             this.searchTimeout = setTimeout(() => {
               this.handleSearch(query);
             }, 300);
