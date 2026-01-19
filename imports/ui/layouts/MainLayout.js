@@ -8,13 +8,13 @@ export const MainLayout = {
     const hubUrl = Meteor.settings.public?.hubUrl || '#';
     const currentRoute = m.route.get();
     
-    const navLinks = [
+    const navLinks = user ? [
       { path: '/', label: 'Home' },
       { path: '/collection', label: 'Collection' },
       { path: '/browse', label: 'Browse' },
       { path: '/statistics', label: 'Statistics' },
       { path: '/import', label: 'Import' }
-    ];
+    ] : [];
     
     return m('div.main-layout', [
       m('header.container', [
