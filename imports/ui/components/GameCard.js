@@ -36,6 +36,17 @@ export const GameCard = {
       return m(`span.badge.${badgeClass}`, STATUS_LABELS[status] || status);
     };
     
+    // Get platforms from collection item (support both old and new format)
+    const getItemPlatforms = (item) => {
+      if (item.platforms && item.platforms.length > 0) {
+        return item.platforms;
+      }
+      if (item.platform) {
+        return [item.platform];
+      }
+      return [];
+    };
+    
     return m('article.game-card', [
       m('div.game-cover', [
         m('img', { 
@@ -76,9 +87,15 @@ export const GameCard = {
             m('small', `${collectionItem.hoursPlayed} hours played`)
           ]),
           
-          collectionItem.platform && m('p.item-platform', [
-            m('small', `Platform: ${collectionItem.platform}`)
-          ])
+          (() => {
+            const platforms = getItemPlatforms(collectionItem);
+            if (platforms.length > 0) {
+              return m('p.item-platform', [
+                m('small', `Platform${platforms.length > 1 ? 's' : ''}: ${platforms.join(', ')}`)
+              ]);
+            }
+            return null;
+          })()
         ])
       ]),
       
