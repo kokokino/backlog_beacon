@@ -63,7 +63,7 @@ export const MainLayout = {
       
       m('footer.container', [
         m('small', [
-          '© 2025 Kokokino • ',
+          '© ', new Date().getFullYear(), ' Kokokino • ',
           m('a', { href: hubUrl }, 'Hub'),
           ' • Game data powered by ',
           m('a', { href: 'https://www.igdb.com', target: '_blank', rel: 'noopener' }, 'IGDB.com')
