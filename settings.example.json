@@ -1,7 +1,7 @@
 {
   "public": {
-    "appName": "Spoke App Skeleton",
-    "appId": "spoke_app_skeleton",
+    "appName": "Backlog Beacon",
+    "appId": "backlog_beacon",
     "hubUrl": "https://kokokino.com",
     "requiredProducts": ["YOUR_METEOR_PRODUCT_COLLECTION_ID"]
   },

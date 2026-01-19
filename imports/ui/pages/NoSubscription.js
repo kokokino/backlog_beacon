@@ -8,7 +8,7 @@ export const NoSubscription = {
     
     return m('div.auth-page', [
       m('h1', '📋 Subscription Required'),
-      m('p', 'You need an active subscription to access this app.'),
+      m('p', 'You need an active subscription to access Backlog Beacon.'),
       
       requiredProducts.length > 0 && m('p', [
         'Required: ',

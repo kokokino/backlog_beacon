@@ -7,7 +7,7 @@ export const NotLoggedIn = {
     
     return m('div.auth-page', [
       m('h1', '🔐 Not Logged In'),
-      m('p', 'You need to log in through the Kokokino Hub to access this app.'),
+      m('p', 'You need to log in through the Kokokino Hub to access Backlog Beacon.'),
       m('a.button', { href: hubUrl }, 'Go to Hub to Login')
     ]);
   }
