@@ -3,6 +3,7 @@ import { check, Match } from 'meteor/check';
 import { searchGames, isConfigured, getCoverUrl } from '../igdb/client.js';
 import { searchAndCacheGame, getOrFetchGame, refreshStaleGames } from '../igdb/gameCache.js';
 import { Games } from '../../imports/lib/collections/games.js';
+import { queueCoverDownload, queueMultipleCoverDownloads } from '../covers/coverQueue.js';
 
 // Rate limiting
 const searchRateLimiter = new Map();
@@ -47,6 +48,8 @@ function transformIgdbGameForCache(igdbGame) {
     publisherIds: publishers.map(p => p.company?.id).filter(Boolean),
     coverImageId: igdbGame.cover?.image_id || null,
     igdbCoverUrl: igdbGame.cover?.image_id ? getCoverUrl(igdbGame.cover.image_id) : null,
+    localCoverId: null,
+    localCoverUpdatedAt: null,
     rating: igdbGame.rating || null,
     ratingCount: igdbGame.rating_count || 0,
     aggregatedRating: igdbGame.aggregated_rating || null,
@@ -116,12 +119,18 @@ Meteor.methods({
     }
     
     const cachedGames = [];
+    const gamesToQueueForCovers = [];
     
     for (const igdbGame of igdbResults) {
       let existingGame = await Games.findOneAsync({ igdbId: igdbGame.id });
       
       if (existingGame) {
         cachedGames.push(existingGame);
+        
+        // Queue for cover download if game has cover but no local cover yet
+        if (existingGame.coverImageId && !existingGame.localCoverId) {
+          gamesToQueueForCovers.push(existingGame);
+        }
         continue;
       }
       
@@ -132,17 +141,35 @@ Meteor.methods({
         const newGame = await Games.findOneAsync(gameId);
         if (newGame) {
           cachedGames.push(newGame);
+          
+          // Queue new game for cover download if it has a cover
+          if (newGame.coverImageId) {
+            gamesToQueueForCovers.push(newGame);
+          }
         }
       } catch (error) {
         if (error.message && error.message.includes('duplicate key')) {
           existingGame = await Games.findOneAsync({ igdbId: igdbGame.id });
           if (existingGame) {
             cachedGames.push(existingGame);
+            
+            // Queue for cover if needed
+            if (existingGame.coverImageId && !existingGame.localCoverId) {
+              gamesToQueueForCovers.push(existingGame);
+            }
           }
         } else {
           console.error('Error caching game:', error);
         }
       }
+    }
+    
+    // Queue cover downloads asynchronously (don't block the response)
+    if (gamesToQueueForCovers.length > 0) {
+      console.log(`igdb.searchAndCache: Queueing ${gamesToQueueForCovers.length} games for cover download`);
+      queueMultipleCoverDownloads(gamesToQueueForCovers, 5).catch(error => {
+        console.error('Error queueing cover downloads:', error);
+      });
     }
     
     return cachedGames;
@@ -161,6 +188,14 @@ Meteor.methods({
     
     const game = await getOrFetchGame(igdbId);
     
+    // Queue cover download if needed (getOrFetchGame in gameCache.js should handle this,
+    // but let's be explicit here too)
+    if (game && game.coverImageId && !game.localCoverId) {
+      queueCoverDownload(game._id, game.coverImageId, 3).catch(error => {
+        console.error('Error queueing cover download:', error);
+      });
+    }
+    
     return game;
   },
   
@@ -177,6 +212,13 @@ Meteor.methods({
     }
     
     const game = await searchAndCacheGame(name, platform);
+    
+    // Queue cover download if needed
+    if (game && game.coverImageId && !game.localCoverId) {
+      queueCoverDownload(game._id, game.coverImageId, 5).catch(error => {
+        console.error('Error queueing cover download:', error);
+      });
+    }
     
     return game;
   },
@@ -243,6 +285,7 @@ Meteor.methods({
           coverUrl: 1,
           coverImageId: 1,
           igdbCoverUrl: 1,
+          localCoverId: 1,
           developer: 1
         }
       }

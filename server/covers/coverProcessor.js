@@ -1,11 +1,15 @@
 import { Meteor } from 'meteor/meteor';
+import { Random } from 'meteor/random';
 import sharp from 'sharp';
+import fs from 'fs';
+import path from 'path';
 import { GameCovers } from './coversCollection.js';
 import { 
   getNextQueueItem, 
   markQueueItemCompleted, 
   markQueueItemFailed,
-  QueueStatus 
+  getQueueStats,
+  queueCoverDownload
 } from './coverQueue.js';
 import { Games } from '../../imports/lib/collections/games.js';
 import { getCoverUrl } from '../igdb/client.js';
@@ -36,6 +40,8 @@ async function downloadIgdbCover(igdbImageId) {
     throw new Error('Invalid IGDB image ID');
   }
   
+  console.log(`CoverProcessor: Downloading from ${url}`);
+  
   const response = await fetch(url);
   
   if (!response.ok) {
@@ -46,37 +52,87 @@ async function downloadIgdbCover(igdbImageId) {
   return Buffer.from(arrayBuffer);
 }
 
+// Get the storage path from FilesCollection (it's a function, not a property)
+function getStoragePath() {
+  if (typeof GameCovers.storagePath === 'function') {
+    return GameCovers.storagePath();
+  }
+  return GameCovers.storagePath;
+}
+
 // Process a single queue item
 async function processQueueItem(item) {
   console.log(`CoverProcessor: Processing game ${item.gameId}, image ${item.igdbImageId}`);
   
   // Download from IGDB
   const imageBuffer = await downloadIgdbCover(item.igdbImageId);
+  console.log(`CoverProcessor: Downloaded ${imageBuffer.length} bytes`);
   
   // Convert to WebP
   const webpBuffer = await convertToWebP(imageBuffer);
+  console.log(`CoverProcessor: Converted to WebP, ${webpBuffer.length} bytes`);
   
-  // Save using FilesCollection
+  // Save file to disk manually and then add to FilesCollection
   const fileName = `${item.igdbImageId}.webp`;
+  const storagePath = getStoragePath();
   
-  // Write to FilesCollection
-  const fileId = await new Promise((resolve, reject) => {
-    GameCovers.write(webpBuffer, {
-      fileName: fileName,
-      type: 'image/webp',
-      meta: {
-        gameId: item.gameId,
-        igdbImageId: item.igdbImageId,
-        processedAt: new Date()
+  // Create a unique file ID
+  const fileId = Random.id();
+  const filePath = path.join(storagePath, fileId);
+  
+  // Ensure directory exists
+  if (!fs.existsSync(storagePath)) {
+    fs.mkdirSync(storagePath, { recursive: true });
+  }
+  
+  // Write file to disk
+  fs.writeFileSync(filePath, webpBuffer);
+  console.log(`CoverProcessor: Wrote file to ${filePath}`);
+  
+  // Get file stats
+  const stats = fs.statSync(filePath);
+  
+  // Insert file record into collection
+  const fileDoc = {
+    _id: fileId,
+    name: fileName,
+    type: 'image/webp',
+    size: stats.size,
+    path: filePath,
+    isVideo: false,
+    isAudio: false,
+    isImage: true,
+    isText: false,
+    isJSON: false,
+    isPDF: false,
+    extension: 'webp',
+    extensionWithDot: '.webp',
+    mime: 'image/webp',
+    'mime-type': 'image/webp',
+    _storagePath: storagePath,
+    _downloadRoute: '/cdn/storage',
+    _collectionName: 'gameCovers',
+    public: true,
+    meta: {
+      gameId: item.gameId,
+      igdbImageId: item.igdbImageId,
+      processedAt: new Date()
+    },
+    userId: null,
+    updatedAt: new Date(),
+    versions: {
+      original: {
+        path: filePath,
+        size: stats.size,
+        type: 'image/webp',
+        extension: 'webp',
+        meta: {}
       }
-    }, (writeError, fileRef) => {
-      if (writeError) {
-        reject(writeError);
-      } else {
-        resolve(fileRef._id);
-      }
-    });
-  });
+    }
+  };
+  
+  await GameCovers.collection.insertAsync(fileDoc);
+  console.log(`CoverProcessor: Inserted file record ${fileId}`);
   
   // Update game document with local cover info
   await Games.updateAsync(item.gameId, {
@@ -107,6 +163,8 @@ async function processQueue() {
       return;
     }
     
+    console.log(`CoverProcessor: Found queue item for game ${item.gameId}`);
+    
     try {
       const coverId = await processQueueItem(item);
       await markQueueItemCompleted(item._id, coverId);
@@ -126,6 +184,51 @@ async function processQueue() {
   isProcessing = false;
 }
 
+// Queue existing games that need covers
+async function queueExistingGamesForCovers() {
+  console.log('CoverProcessor: Checking for existing games that need covers...');
+  
+  try {
+    // Find games that have a coverImageId but no localCoverId
+    const gamesNeedingCovers = await Games.find({
+      coverImageId: { $exists: true, $ne: null },
+      $or: [
+        { localCoverId: { $exists: false } },
+        { localCoverId: null }
+      ]
+    }, {
+      fields: { _id: 1, coverImageId: 1, title: 1 },
+      limit: 100 // Process in batches to avoid overwhelming the queue
+    }).fetchAsync();
+    
+    if (gamesNeedingCovers.length === 0) {
+      console.log('CoverProcessor: All existing games have local covers (or no cover image)');
+      return 0;
+    }
+    
+    console.log(`CoverProcessor: Found ${gamesNeedingCovers.length} games needing covers`);
+    
+    let queuedCount = 0;
+    for (const game of gamesNeedingCovers) {
+      try {
+        const queueId = await queueCoverDownload(game._id, game.coverImageId, 10); // Lower priority for batch
+        if (queueId) {
+          queuedCount++;
+        }
+      } catch (error) {
+        console.error(`CoverProcessor: Error queueing cover for game ${game._id}:`, error.message);
+      }
+    }
+    
+    console.log(`CoverProcessor: Queued ${queuedCount} games for cover download`);
+    return queuedCount;
+    
+  } catch (error) {
+    console.error('CoverProcessor: Error checking existing games:', error);
+    return 0;
+  }
+}
+
 // Start the background processor
 export function startCoverProcessor() {
   if (processingInterval) {
@@ -135,8 +238,29 @@ export function startCoverProcessor() {
   
   console.log('CoverProcessor: Starting background processor');
   
-  // Process immediately on start
-  processQueue();
+  // Log initial queue stats and queue existing games
+  Meteor.defer(async () => {
+    try {
+      const stats = await getQueueStats();
+      console.log(`CoverProcessor: Initial queue stats - pending: ${stats.pending}, processing: ${stats.processing}, completed: ${stats.completed}, failed: ${stats.failed}`);
+      
+      // If queue is empty, check for existing games that need covers
+      if (stats.pending === 0) {
+        await queueExistingGamesForCovers();
+        
+        // Log updated stats
+        const newStats = await getQueueStats();
+        console.log(`CoverProcessor: Updated queue stats - pending: ${newStats.pending}, processing: ${newStats.processing}, completed: ${newStats.completed}, failed: ${newStats.failed}`);
+      }
+    } catch (error) {
+      console.error('CoverProcessor: Error during startup:', error);
+    }
+  });
+  
+  // Process immediately on start (with small delay to let queue populate)
+  Meteor.setTimeout(() => {
+    processQueue();
+  }, 1000);
   
   // Then process periodically
   processingInterval = Meteor.setInterval(() => {
@@ -157,3 +281,6 @@ export function stopCoverProcessor() {
 export function isProcessorRunning() {
   return processingInterval !== null;
 }
+
+// Export for manual triggering if needed
+export { queueExistingGamesForCovers };
