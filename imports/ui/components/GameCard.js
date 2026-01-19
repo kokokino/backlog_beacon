@@ -9,11 +9,13 @@ export const GameCard = {
       return m('article.game-card', m('p', 'Game not found'));
     }
     
+    // Use a transparent 1x1 PNG as a placeholder to avoid network requests
+    const transparentPixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
     const coverUrl = game.coverImageId 
       ? `/covers/${game.coverImageId}.webp`
       : game.igdbCoverUrl 
         ? game.igdbCoverUrl 
-        : '/placeholder-cover.png';
+        : transparentPixel;
     
     const renderStars = (rating) => {
       const stars = [];
@@ -41,7 +43,8 @@ export const GameCard = {
           alt: game.title,
           loading: 'lazy',
           onerror(event) {
-            event.target.src = '/placeholder-cover.png';
+            // If a real image fails to load, fall back to the transparent pixel (no network)
+            event.target.src = transparentPixel;
           }
         })
       ]),
