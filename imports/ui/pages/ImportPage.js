@@ -407,10 +407,9 @@ const ImportContent = {
         this.darkadiaResult.errors.length > 0 && m('details', [
           m('summary', `${this.darkadiaResult.errors.length} errors`),
           m('ul', [
-            this.darkadiaResult.errors.slice(0, 10).map((error, index) => 
+            this.darkadiaResult.errors.map((error, index) => 
               m('li', { key: index }, `Row ${error.row}: ${error.name} - ${error.error}`)
-            ),
-            this.darkadiaResult.errors.length > 10 && m('li', `... and ${this.darkadiaResult.errors.length - 10} more`)
+            )
           ])
         ])
       ]),
