@@ -23,9 +23,7 @@ const ImportContent = {
     this.darkadiaResult = null;
     this.darkadiaError = null;
     this.darkadiaOptions = {
-      skipDuplicates: true,
-      updateExisting: false,
-      skipIgdb: false
+      updateExisting: true
     };
     
     // Backlog Beacon import state
@@ -34,8 +32,7 @@ const ImportContent = {
     this.backlogResult = null;
     this.backlogError = null;
     this.backlogOptions = {
-      skipDuplicates: true,
-      updateExisting: false
+      updateExisting: true
     };
     
     // Simple import state
@@ -338,32 +335,12 @@ const ImportContent = {
         m('label', [
           m('input', {
             type: 'checkbox',
-            checked: this.darkadiaOptions.skipDuplicates,
-            onchange: (event) => {
-              this.darkadiaOptions.skipDuplicates = event.target.checked;
-            }
-          }),
-          ' Skip duplicate games'
-        ]),
-        m('label', [
-          m('input', {
-            type: 'checkbox',
             checked: this.darkadiaOptions.updateExisting,
             onchange: (event) => {
               this.darkadiaOptions.updateExisting = event.target.checked;
             }
           }),
-          ' Update existing games instead of skipping'
-        ]),
-        m('label', [
-          m('input', {
-            type: 'checkbox',
-            checked: this.darkadiaOptions.skipIgdb,
-            onchange: (event) => {
-              this.darkadiaOptions.skipIgdb = event.target.checked;
-            }
-          }),
-          ' Skip IGDB lookup (faster, but no cover art or metadata)'
+          ' Update existing games instead of skipping. Overwrites edits (notes, rating, status, etc.)'
         ])
       ]),
       
@@ -443,22 +420,12 @@ const ImportContent = {
         m('label', [
           m('input', {
             type: 'checkbox',
-            checked: this.backlogOptions.skipDuplicates,
-            onchange: (event) => {
-              this.backlogOptions.skipDuplicates = event.target.checked;
-            }
-          }),
-          ' Skip duplicate games'
-        ]),
-        m('label', [
-          m('input', {
-            type: 'checkbox',
             checked: this.backlogOptions.updateExisting,
             onchange: (event) => {
               this.backlogOptions.updateExisting = event.target.checked;
             }
           }),
-          ' Update existing games instead of skipping'
+          ' Update existing games instead of skipping. Overwrites edits (notes, rating, status, etc.)'
         ])
       ]),
       

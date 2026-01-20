@@ -43,9 +43,7 @@ Meteor.methods({
   async 'import.darkadia'(csvContent, options) {
     check(csvContent, String);
     check(options, Match.Maybe({
-      skipDuplicates: Match.Maybe(Boolean),
-      updateExisting: Match.Maybe(Boolean),
-      skipIgdb: Match.Maybe(Boolean)
+      updateExisting: Match.Maybe(Boolean)
     }));
     
     if (!this.userId) {
@@ -59,9 +57,7 @@ Meteor.methods({
     }
     
     const importOptions = {
-      skipDuplicates: options?.skipDuplicates !== false,
-      updateExisting: options?.updateExisting === true,
-      skipIgdb: options?.skipIgdb === true
+      updateExisting: options?.updateExisting === true
     };
     
     return importDarkadiaCSV(this.userId, csvContent, importOptions);
@@ -80,7 +76,6 @@ Meteor.methods({
   async 'import.backlogBeacon'(csvContent, options) {
     check(csvContent, String);
     check(options, Match.Maybe({
-      skipDuplicates: Match.Maybe(Boolean),
       updateExisting: Match.Maybe(Boolean)
     }));
     
@@ -95,7 +90,6 @@ Meteor.methods({
     }
     
     const importOptions = {
-      skipDuplicates: options?.skipDuplicates !== false,
       updateExisting: options?.updateExisting === true
     };
     

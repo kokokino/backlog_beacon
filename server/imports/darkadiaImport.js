@@ -144,16 +144,14 @@ async function importRow(userId, row, options = {}) {
   let igdbId = null;
   let gameId = null;
   
-  if (options.skipIgdb !== true) {
-    try {
-      game = await searchAndCacheGame(gameName, primaryPlatform);
-      if (game) {
-        igdbId = game.igdbId;
-        gameId = game._id;
-      }
-    } catch (error) {
-      console.warn(`IGDB search failed for "${gameName}":`, error.message);
+  try {
+    game = await searchAndCacheGame(gameName, primaryPlatform);
+    if (game) {
+      igdbId = game.igdbId;
+      gameId = game._id;
     }
+  } catch (error) {
+    console.warn(`IGDB search failed for "${gameName}":`, error.message);
   }
   
   // Check for existing collection item
@@ -167,7 +165,7 @@ async function importRow(userId, row, options = {}) {
   
   const existing = await CollectionItems.findOneAsync(existingQuery);
   
-  if (existing && options.skipDuplicates !== false) {
+  if (existing && options.updateExisting !== true) {
     return { success: false, error: 'Duplicate', existing: existing._id, row };
   }
   
