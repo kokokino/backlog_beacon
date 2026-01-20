@@ -8,7 +8,12 @@ export function getGameCoverUrl(game, size = 'cover_big') {
     return null;
   }
   
-  // If we have a local cover, use it
+  // If we have a stored local cover URL, use it directly
+  if (game.localCoverUrl) {
+    return game.localCoverUrl;
+  }
+  
+  // If we have a local cover ID but no URL, try to look it up
   if (game.localCoverId) {
     const coverFile = GameCovers.findOne(game.localCoverId);
     if (coverFile) {
@@ -35,7 +40,12 @@ export async function getGameCoverUrlAsync(game, size = 'cover_big') {
     return null;
   }
   
-  // If we have a local cover, use it
+  // If we have a stored local cover URL, use it directly
+  if (game.localCoverUrl) {
+    return game.localCoverUrl;
+  }
+  
+  // If we have a local cover ID but no URL, try to look it up
   if (game.localCoverId) {
     const coverFile = await GameCovers.collection.findOneAsync(game.localCoverId);
     if (coverFile) {
@@ -71,7 +81,7 @@ export function getGameCoverUrls(games, size = 'cover_big') {
 
 // Check if a game has a local cover
 export function hasLocalCover(game) {
-  return !!(game && game.localCoverId);
+  return !!(game && (game.localCoverUrl || game.localCoverId));
 }
 
 // Check if a game needs cover processing
@@ -81,7 +91,7 @@ export function needsCoverProcessing(game) {
   }
   
   // Has IGDB image but no local cover
-  if (game.coverImageId && !game.localCoverId) {
+  if (game.coverImageId && !game.localCoverId && !game.localCoverUrl) {
     return true;
   }
   

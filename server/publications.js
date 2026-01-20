@@ -113,6 +113,8 @@ Meteor.publish('gamesByIds', function(gameIds) {
         coverUrl: 1,
         coverImageId: 1,
         igdbCoverUrl: 1,
+        localCoverId: 1,
+        localCoverUrl: 1,
         rating: 1
       }
     }
@@ -181,6 +183,8 @@ Meteor.publish('gamesSearch', function(query = '', options = {}) {
       coverImageId: 1,
       coverUrl: 1,
       igdbCoverUrl: 1,
+      localCoverId: 1,
+      localCoverUrl: 1,
       developer: 1
     }
   });
@@ -236,6 +240,8 @@ Meteor.publish('gamesBrowse', function(options = {}) {
       coverImageId: 1,
       coverUrl: 1,
       igdbCoverUrl: 1,
+      localCoverId: 1,
+      localCoverUrl: 1,
       developer: 1
     }
   };

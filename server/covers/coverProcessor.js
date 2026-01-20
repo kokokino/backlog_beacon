@@ -1,8 +1,5 @@
 import { Meteor } from 'meteor/meteor';
-import { Random } from 'meteor/random';
 import sharp from 'sharp';
-import fs from 'fs';
-import path from 'path';
 import { GameCovers } from './coversCollection.js';
 import { 
   getNextQueueItem, 
@@ -52,14 +49,6 @@ async function downloadIgdbCover(igdbImageId) {
   return Buffer.from(arrayBuffer);
 }
 
-// Get the storage path from FilesCollection (it's a function, not a property)
-function getStoragePath() {
-  if (typeof GameCovers.storagePath === 'function') {
-    return GameCovers.storagePath();
-  }
-  return GameCovers.storagePath;
-}
-
 // Process a single queue item
 async function processQueueItem(item) {
   console.log(`CoverProcessor: Processing game ${item.gameId}, image ${item.igdbImageId}`);
@@ -72,79 +61,37 @@ async function processQueueItem(item) {
   const webpBuffer = await convertToWebP(imageBuffer);
   console.log(`CoverProcessor: Converted to WebP, ${webpBuffer.length} bytes`);
   
-  // Save file to disk manually and then add to FilesCollection
+  // Use writeAsync to properly add file to FilesCollection
+  // This handles file storage, document creation, and URL generation
   const fileName = `${item.igdbImageId}.webp`;
-  const storagePath = getStoragePath();
   
-  // Create a unique file ID
-  const fileId = Random.id();
-  const filePath = path.join(storagePath, fileId);
-  
-  // Ensure directory exists
-  if (!fs.existsSync(storagePath)) {
-    fs.mkdirSync(storagePath, { recursive: true });
-  }
-  
-  // Write file to disk
-  fs.writeFileSync(filePath, webpBuffer);
-  console.log(`CoverProcessor: Wrote file to ${filePath}`);
-  
-  // Get file stats
-  const stats = fs.statSync(filePath);
-  
-  // Insert file record into collection
-  const fileDoc = {
-    _id: fileId,
-    name: fileName,
+  const fileObj = await GameCovers.writeAsync(webpBuffer, {
+    fileName: fileName,
     type: 'image/webp',
-    size: stats.size,
-    path: filePath,
-    isVideo: false,
-    isAudio: false,
-    isImage: true,
-    isText: false,
-    isJSON: false,
-    isPDF: false,
-    extension: 'webp',
-    extensionWithDot: '.webp',
-    mime: 'image/webp',
-    'mime-type': 'image/webp',
-    _storagePath: storagePath,
-    _downloadRoute: '/cdn/storage',
-    _collectionName: 'gameCovers',
-    public: true,
     meta: {
       gameId: item.gameId,
       igdbImageId: item.igdbImageId,
       processedAt: new Date()
-    },
-    userId: null,
-    updatedAt: new Date(),
-    versions: {
-      original: {
-        path: filePath,
-        size: stats.size,
-        type: 'image/webp',
-        extension: 'webp',
-        meta: {}
-      }
     }
-  };
+  });
   
-  await GameCovers.collection.insertAsync(fileDoc);
-  console.log(`CoverProcessor: Inserted file record ${fileId}`);
+  console.log(`CoverProcessor: Wrote file ${fileObj._id}`);
+  
+  // Use link() to get the proper downloadable URL
+  const coverUrl = GameCovers.link(fileObj);
   
   // Update game document with local cover info
   await Games.updateAsync(item.gameId, {
     $set: {
-      localCoverId: fileId,
+      localCoverId: fileObj._id,
+      localCoverUrl: coverUrl,
       localCoverUpdatedAt: new Date()
     }
   });
   
-  console.log(`CoverProcessor: Completed game ${item.gameId}, file ${fileId}`);
+  console.log(`CoverProcessor: Completed game ${item.gameId}, file ${fileObj._id}, url ${coverUrl}`);
   
-  return fileId;
+  return fileObj._id;
 }
 
 // Main processing loop

@@ -7,9 +7,9 @@ function getGameCoverUrl(game) {
     return null;
   }
   
-  // If we have a local cover, construct the URL
-  if (game.localCoverId) {
-    return `/cdn/storage/gameCovers/${game.localCoverId}/original/${game.localCoverId}.webp`;
+  // If we have a stored local cover URL, use it directly
+  if (game.localCoverUrl) {
+    return game.localCoverUrl;
   }
   
   // Fall back to IGDB URL
@@ -74,6 +74,9 @@ export const GameCard = {
       return [];
     };
     
+    // Show local cover badge only if we have a local cover URL
+    const hasLocalCover = !!game.localCoverUrl;
+    
     return m('article.game-card', [
       m('div.game-cover', [
         m('img', { 
@@ -86,7 +89,7 @@ export const GameCard = {
           }
         }),
         // Show indicator if using local cover
-        game.localCoverId && m('span.local-cover-badge', { title: 'Cached locally' }, '💾')
+        hasLocalCover && m('span.local-cover-badge', { title: 'Cached locally' }, '💾')
       ]),
       
       m('div.game-info', [
