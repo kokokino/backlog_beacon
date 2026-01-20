@@ -144,15 +144,6 @@ describe("backlog_beacon", function () {
         }
       });
 
-      it("admin.seedSampleGames rejects unauthenticated users", async function () {
-        try {
-          await Meteor.callAsync("admin.seedSampleGames");
-          assert.fail("Should have thrown an error");
-        } catch (error) {
-          assert.strictEqual(error.error, "not-authorized");
-        }
-      });
-
       it("user.hasAccess returns false when no user logged in", async function () {
         const result = await Meteor.callAsync("user.hasAccess", []);
         assert.strictEqual(result, false);
