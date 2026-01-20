@@ -13,6 +13,7 @@ import { HomePage } from '../imports/ui/pages/HomePage.js';
 import { CollectionPage } from '../imports/ui/pages/CollectionPage.js';
 import { BrowsePage } from '../imports/ui/pages/BrowsePage.js';
 import { StatisticsPage } from '../imports/ui/pages/StatisticsPage.js';
+import { ImportPage } from '../imports/ui/pages/ImportPage.js';
 import { NotLoggedIn } from '../imports/ui/pages/NotLoggedIn.js';
 import { NoSubscription } from '../imports/ui/pages/NoSubscription.js';
 import { SessionExpired } from '../imports/ui/pages/SessionExpired.js';
@@ -67,7 +68,7 @@ function initializeApp() {
     '/collection': layoutRoute(CollectionPage),
     '/browse': layoutRoute(BrowsePage),
     '/statistics': layoutRoute(StatisticsPage),
-    '/import': layoutRoute(HomePage),
+    '/import': layoutRoute(ImportPage),
     '/not-logged-in': layoutRoute(NotLoggedIn),
     '/no-subscription': layoutRoute(NoSubscription),
     '/session-expired': layoutRoute(SessionExpired),
