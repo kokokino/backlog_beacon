@@ -1,7 +1,9 @@
 import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
+import { Tracker } from 'meteor/tracker';
 import { RequireAuth } from '../components/RequireAuth.js';
 import { getStorefronts } from '../../lib/constants/storefronts.js';
+import { ImportProgress } from '../../lib/collections/importProgress.js';
 
 const TABS = {
   DARKADIA: 'darkadia',
@@ -25,6 +27,7 @@ const ImportContent = {
     this.darkadiaOptions = {
       updateExisting: true
     };
+    this.darkadiaProgress = null;
     
     // Backlog Beacon import state
     this.backlogFile = null;
@@ -46,6 +49,31 @@ const ImportContent = {
     // Export state
     this.exporting = false;
     this.exportError = null;
+    
+    // Subscriptions
+    this.progressSubscription = null;
+    this.progressComputation = null;
+  },
+  
+  oncreate(vnode) {
+    // Subscribe to import progress
+    this.progressSubscription = Meteor.subscribe('importProgress');
+    
+    // Set up reactive computation to track progress
+    this.progressComputation = Tracker.autorun(() => {
+      const progress = ImportProgress.findOne({ type: 'darkadia' });
+      this.darkadiaProgress = progress;
+      m.redraw();
+    });
+  },
+  
+  onremove(vnode) {
+    if (this.progressSubscription) {
+      this.progressSubscription.stop();
+    }
+    if (this.progressComputation) {
+      this.progressComputation.stop();
+    }
   },
   
   async loadStorefronts() {
@@ -114,6 +142,15 @@ const ImportContent = {
       this.darkadiaResult = await Meteor.callAsync('import.darkadia', content, this.darkadiaOptions);
       this.darkadiaFile = null;
       this.darkadiaPreview = null;
+      
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
     } catch (error) {
       this.darkadiaError = error.reason || error.message || 'Import failed';
     }
@@ -314,6 +351,9 @@ const ImportContent = {
   },
   
   renderDarkadiaTab() {
+    const progress = this.darkadiaProgress;
+    const isProcessing = progress && progress.status === 'processing';
+    
     return m('div.darkadia-import', [
       m('header', [
         m('h2', 'Import from Darkadia'),
@@ -326,6 +366,7 @@ const ImportContent = {
           type: 'file',
           id: 'darkadia-file',
           accept: '.csv',
+          disabled: this.darkadiaImporting,
           onchange: (event) => this.handleDarkadiaFileSelect(event)
         })
       ]),
@@ -336,6 +377,7 @@ const ImportContent = {
           m('input', {
             type: 'checkbox',
             checked: this.darkadiaOptions.updateExisting,
+            disabled: this.darkadiaImporting,
             onchange: (event) => {
               this.darkadiaOptions.updateExisting = event.target.checked;
             }
@@ -344,7 +386,31 @@ const ImportContent = {
         ])
       ]),
       
-      this.darkadiaPreview && m('div.import-preview', [
+      // Progress indicator
+      (this.darkadiaImporting || isProcessing) && progress && m('div.import-progress', [
+        m('h3', 'Import Progress'),
+        m('div.progress-info', [
+          m('p', [
+            m('strong', 'Processing: '),
+            `${progress.current || 0} of ${progress.total || 0} games`
+          ]),
+          progress.currentGame && m('p', [
+            m('strong', 'Current: '),
+            progress.currentGame
+          ]),
+          m('div.progress-stats', [
+            m('span.stat-imported', `✓ Imported: ${progress.imported || 0}`),
+            m('span.stat-updated', ` | Updated: ${progress.updated || 0}`),
+            m('span.stat-skipped', ` | Skipped: ${progress.skipped || 0}`)
+          ])
+        ]),
+        m('progress', {
+          value: progress.current || 0,
+          max: progress.total || 100
+        })
+      ]),
+      
+      this.darkadiaPreview && !this.darkadiaImporting && m('div.import-preview', [
         m('h3', `Preview (${this.darkadiaPreview.total} games found)`),
         m('p', `Showing first ${this.darkadiaPreview.games.length} games:`),
         m('table', { role: 'grid' }, [

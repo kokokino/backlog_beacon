@@ -3,6 +3,7 @@ import { Migrations } from 'meteor/quave:migrations';
 import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems } from '../imports/lib/collections/collectionItems.js';
 import { Storefronts } from '../imports/lib/collections/storefronts.js';
+import { ImportProgress } from '../imports/lib/collections/importProgress.js';
 
 import './accounts.js';
 import './methods.js';
@@ -18,6 +19,9 @@ import { startCoverProcessor } from './covers/index.js';
 // Import additional methods
 import './methods/igdbMethods.js';
 import './methods/importMethods.js';
+
+// Import additional publications
+import './publications/importProgressPublication.js';
 
 // Import scheduled jobs
 import './scheduled/gameRefresh.js';

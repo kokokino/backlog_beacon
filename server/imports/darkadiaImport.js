@@ -1,5 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
+import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 
@@ -125,6 +126,26 @@ function parseDate(dateString) {
   }
   
   return date;
+}
+
+// Update progress in the database
+async function updateProgress(userId, progressData) {
+  await ImportProgress.upsertAsync(
+    { userId, type: 'darkadia' },
+    { 
+      $set: {
+        ...progressData,
+        userId,
+        type: 'darkadia',
+        updatedAt: new Date()
+      }
+    }
+  );
+}
+
+// Clear progress from the database
+async function clearProgress(userId) {
+  await ImportProgress.removeAsync({ userId, type: 'darkadia' });
 }
 
 // Import a single Darkadia row
@@ -255,53 +276,95 @@ export async function importDarkadiaCSV(userId, csvContent, options = {}) {
     games: []
   };
   
-  // Process rows with rate limiting for IGDB
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    
-    try {
-      const result = await importRow(userId, row, options);
+  // Initialize progress
+  await updateProgress(userId, {
+    status: 'processing',
+    current: 0,
+    total: rows.length,
+    currentGame: '',
+    imported: 0,
+    updated: 0,
+    skipped: 0
+  });
+  
+  try {
+    // Process rows with rate limiting for IGDB
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       
-      if (result.success) {
-        if (result.action === 'updated') {
-          results.updated++;
-        } else {
-          results.imported++;
-        }
-        results.games.push({
-          name: result.gameName,
-          itemId: result.itemId,
-          gameId: result.gameId,
-          action: result.action
-        });
-      } else {
-        results.skipped++;
-        if (result.error !== 'Duplicate') {
-          results.errors.push({
-            row: i + 2, // +2 for header row and 0-indexing
-            name: row.Name,
-            error: result.error
-          });
-        }
-      }
-    } catch (error) {
-      results.skipped++;
-      results.errors.push({
-        row: i + 2,
-        name: row.Name,
-        error: error.message
-      });
-    }
-    
-    // Progress callback if provided
-    if (options.onProgress) {
-      options.onProgress({
+      // Update progress before processing each row
+      await updateProgress(userId, {
+        status: 'processing',
         current: i + 1,
         total: rows.length,
+        currentGame: row.Name || 'Unknown',
         imported: results.imported,
+        updated: results.updated,
         skipped: results.skipped
       });
+      
+      try {
+        const result = await importRow(userId, row, options);
+        
+        if (result.success) {
+          if (result.action === 'updated') {
+            results.updated++;
+          } else {
+            results.imported++;
+          }
+          results.games.push({
+            name: result.gameName,
+            itemId: result.itemId,
+            gameId: result.gameId,
+            action: result.action
+          });
+        } else {
+          results.skipped++;
+          if (result.error !== 'Duplicate') {
+            results.errors.push({
+              row: i + 2, // +2 for header row and 0-indexing
+              name: row.Name,
+              error: result.error
+            });
+          }
+        }
+      } catch (error) {
+        results.skipped++;
+        results.errors.push({
+          row: i + 2,
+          name: row.Name,
+          error: error.message
+        });
+      }
+      
+      // Progress callback if provided
+      if (options.onProgress) {
+        options.onProgress({
+          current: i + 1,
+          total: rows.length,
+          imported: results.imported,
+          skipped: results.skipped
+        });
+      }
     }
+    
+    // Mark as complete
+    await updateProgress(userId, {
+      status: 'complete',
+      current: rows.length,
+      total: rows.length,
+      currentGame: '',
+      imported: results.imported,
+      updated: results.updated,
+      skipped: results.skipped
+    });
+  } catch (error) {
+    // Mark as error
+    await updateProgress(userId, {
+      status: 'error',
+      error: error.message
+    });
+    throw error;
   }
   
   return results;
@@ -344,3 +407,6 @@ export async function previewDarkadiaImport(userId, csvContent) {
   
   return preview;
 }
+
+// Export clearProgress for use in methods
+export { clearProgress };

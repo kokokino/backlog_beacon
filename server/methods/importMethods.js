@@ -1,6 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
-import { importDarkadiaCSV, previewDarkadiaImport } from '../imports/darkadiaImport.js';
+import { importDarkadiaCSV, previewDarkadiaImport, clearProgress } from '../imports/darkadiaImport.js';
 import { exportCollectionCSV, importBacklogBeaconCSV } from '../imports/csvExport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -60,7 +60,19 @@ Meteor.methods({
       updateExisting: options?.updateExisting === true
     };
     
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+    
     return importDarkadiaCSV(this.userId, csvContent, importOptions);
+  },
+  
+  // Clear import progress
+  async 'import.clearProgress'() {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in');
+    }
+    
+    await clearProgress(this.userId);
   },
   
   // Export collection to CSV

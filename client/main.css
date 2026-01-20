@@ -1097,6 +1097,52 @@ dialog article footer button {
   margin-bottom: 2rem;
 }
 
+/* Import Progress Styles */
+.import-progress {
+  background: var(--pico-card-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: var(--pico-border-radius);
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.import-progress h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1rem;
+}
+
+.import-progress .progress-info {
+  margin-bottom: 1rem;
+}
+
+.import-progress .progress-info p {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.import-progress .progress-stats {
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+}
+
+.import-progress .stat-imported {
+  color: var(--color-completed);
+}
+
+.import-progress .stat-updated {
+  color: var(--color-playing);
+}
+
+.import-progress .stat-skipped {
+  color: var(--pico-muted-color);
+}
+
+.import-progress progress {
+  width: 100%;
+  height: 1.5rem;
+  margin: 0;
+}
+
 @media (max-width: 768px) {
   header nav {
     flex-direction: column;
