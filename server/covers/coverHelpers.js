@@ -17,7 +17,8 @@ export function getGameCoverUrl(game, size = 'cover_big') {
   if (game.localCoverId) {
     const coverFile = GameCovers.findOne(game.localCoverId);
     if (coverFile) {
-      return GameCovers.link(coverFile);
+      // Use '/' as URIBase to get relative URL
+      return GameCovers.link(coverFile, 'original', '/');
     }
   }
   
@@ -49,7 +50,8 @@ export async function getGameCoverUrlAsync(game, size = 'cover_big') {
   if (game.localCoverId) {
     const coverFile = await GameCovers.collection.findOneAsync(game.localCoverId);
     if (coverFile) {
-      return GameCovers.link(coverFile);
+      // Use '/' as URIBase to get relative URL
+      return GameCovers.link(coverFile, 'original', '/');
     }
   }
   

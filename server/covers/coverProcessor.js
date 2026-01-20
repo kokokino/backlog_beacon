@@ -77,8 +77,10 @@ async function processQueueItem(item) {
   
   console.log(`CoverProcessor: Wrote file ${fileObj._id}`);
   
-  // Use link() to get the proper downloadable URL
-  const coverUrl = GameCovers.link(fileObj);
+  // Use link() with '/' as URIBase to get a relative URL
+  // This ensures the URL works in both development and production
+  // Arguments: fileRef, version ('original' is default), URIBase
+  const coverUrl = GameCovers.link(fileObj, 'original', '/');
   
   // Update game document with local cover info
   await Games.updateAsync(item.gameId, {
