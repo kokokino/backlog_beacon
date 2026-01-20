@@ -65,11 +65,7 @@ export const CollectionStats = {
           m('span.stat-value', `${stats.averageRating} ★`),
           m('span.stat-label', 'Avg Rating')
         ])
-      ]),
-      
-      m('button.outline.small', {
-        onclick: () => this.loadStats()
-      }, 'Refresh Stats')
+      ])
     ]);
   }
 };

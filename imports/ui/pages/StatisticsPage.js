@@ -126,10 +126,6 @@ const StatisticsContent = {
           )
         ),
         sortedPlatforms.length > 10 && m('p', m('small', `And ${sortedPlatforms.length - 10} more platforms...`))
-      ]),
-      
-      m('div.stats-actions', [
-        m('button.outline', { onclick: () => this.loadStats() }, 'Refresh Statistics')
       ])
     ]);
   }
