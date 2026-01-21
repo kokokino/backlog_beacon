@@ -386,6 +386,42 @@ Meteor.methods({
     return count;
   },
 
+  async 'games.count'(filters = {}) {
+    check(filters, {
+      search: Match.Maybe(String),
+      platform: Match.Maybe(String),
+      genre: Match.Maybe(String)
+    });
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+
+    checkRateLimit(this.userId, 'games.count');
+
+    const query = {};
+
+    if (filters.search && filters.search.trim().length > 0) {
+      const searchTerm = filters.search.trim().toLowerCase();
+      query.$or = [
+        { searchName: { $regex: searchTerm, $options: 'i' } },
+        { title: { $regex: searchTerm, $options: 'i' } },
+        { name: { $regex: searchTerm, $options: 'i' } }
+      ];
+    }
+
+    if (filters.platform) {
+      query.platforms = filters.platform;
+    }
+
+    if (filters.genre) {
+      query.genres = filters.genre;
+    }
+
+    const count = await Games.countDocuments(query);
+    return count;
+  },
+
   async 'games.search'(query, options = {}) {
     check(query, String);
     check(options, {
@@ -393,11 +429,11 @@ Meteor.methods({
       platform: Match.Maybe(String),
       genre: Match.Maybe(String)
     });
-    
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
-    
+
     checkRateLimit(this.userId, 'games.search');
     
     const limit = Math.min(options.limit || 20, 100);

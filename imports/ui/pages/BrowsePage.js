@@ -7,6 +7,8 @@ import { AddGameModal } from '../components/AddGameModal.js';
 import { Games } from '../../lib/collections/games.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 
+const PAGE_SIZE = 24;
+
 const BrowseContent = {
   oninit(vnode) {
     this.localGames = [];
@@ -25,14 +27,17 @@ const BrowseContent = {
     this.computation = null;
     this.searchTimeout = null;
     this.igdbTimeout = null;
-    
+    this.currentPage = 1;
+    this.totalCount = 0;
+
     this.checkIgdbConfigured();
   },
   
   oncreate(vnode) {
     this.setupSubscriptions();
+    this.fetchTotalCount();
   },
-  
+
   onremove(vnode) {
     if (this.subscription) {
       this.subscription.stop();
@@ -60,7 +65,32 @@ const BrowseContent = {
       m.redraw();
     }
   },
-  
+
+  async fetchTotalCount() {
+    const filters = {};
+    if (this.searchQuery && this.searchQuery.trim().length > 0) {
+      filters.search = this.searchQuery.trim();
+    }
+
+    try {
+      const count = await Meteor.callAsync('games.count', filters);
+      this.totalCount = count;
+      m.redraw();
+    } catch (error) {
+      console.error('Failed to fetch games count:', error);
+      this.totalCount = 0;
+    }
+  },
+
+  goToPage(page) {
+    const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
+    if (page < 1 || page > maxPages) {
+      return;
+    }
+    this.currentPage = page;
+    this.setupSubscriptions();
+  },
+
   setupSubscriptions() {
     if (this.subscription) {
       this.subscription.stop();
@@ -74,8 +104,16 @@ const BrowseContent = {
     
     this.localLoading = true;
     m.redraw();
-    
-    this.subscription = Meteor.subscribe('gamesSearch', this.searchQuery, { limit: 50 });
+
+    const options = {
+      limit: PAGE_SIZE,
+      skip: (this.currentPage - 1) * PAGE_SIZE
+    };
+    if (this.searchQuery && this.searchQuery.trim().length > 0) {
+      options.search = this.searchQuery.trim();
+    }
+
+    this.subscription = Meteor.subscribe('gamesBrowse', options);
     this.collectionSub = Meteor.subscribe('userCollection', {});
     
     this.computation = Tracker.autorun(() => {
@@ -95,17 +133,19 @@ const BrowseContent = {
   
   handleSearch(query) {
     this.searchQuery = query;
+    this.currentPage = 1;
     this.igdbSearched = false;
     this.igdbGames = [];
     this.igdbError = null;
-    
+
     if (this.igdbTimeout) {
       clearTimeout(this.igdbTimeout);
       this.igdbTimeout = null;
     }
-    
+
     this.setupSubscriptions();
-    
+    this.fetchTotalCount();
+
     if (query.trim().length >= 3 && this.igdbConfigured) {
       this.igdbTimeout = setTimeout(() => {
         this.searchIgdb(query);
@@ -150,6 +190,9 @@ const BrowseContent = {
     const hasIgdbResults = this.igdbGames.length > 0;
     const showIgdbSection = this.searchQuery.trim().length >= 3 && this.igdbConfigured;
     const isEmptySearch = !this.searchQuery.trim();
+    const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
+    const startIndex = this.totalCount > 0 ? ((this.currentPage - 1) * PAGE_SIZE) + 1 : 0;
+    const endIndex = Math.min(this.currentPage * PAGE_SIZE, this.totalCount);
     
     return m('div.browse-page', [
       m('header.page-header', [
@@ -182,7 +225,7 @@ const BrowseContent = {
         m('h3.section-title', [
           '📚 ',
           isEmptySearch ? 'Games in Database' : 'Local Results',
-          !this.localLoading && m('span.result-count', ` (${this.localGames.length})`)
+          !this.localLoading && m('span.result-count', ` (${this.totalCount.toLocaleString()} total)`)
         ]),
         
         this.localLoading && m('div.loading-container', [
@@ -208,9 +251,24 @@ const BrowseContent = {
               onAddToCollection: inCollection ? null : (selectedGame) => { this.addingGame = selectedGame; }
             });
           })
-        )
+        ),
+
+        !this.localLoading && this.totalCount > 0 && m('div.pagination-row', [
+          m('span.results-info', `Showing ${startIndex}-${endIndex} of ${this.totalCount.toLocaleString()} games`),
+          this.totalCount > PAGE_SIZE && m('div.pagination-buttons', [
+            m('button.outline.small', {
+              disabled: this.currentPage === 1,
+              onclick: () => this.goToPage(this.currentPage - 1)
+            }, 'Previous'),
+            m('span.page-indicator', `Page ${this.currentPage} of ${maxPages}`),
+            m('button.outline.small', {
+              disabled: this.currentPage >= maxPages,
+              onclick: () => this.goToPage(this.currentPage + 1)
+            }, 'Next')
+          ])
+        ])
       ]),
-      
+
       showIgdbSection && m('section.igdb-results', [
         m('h3.section-title', [
           '🌐 Results from IGDB',
