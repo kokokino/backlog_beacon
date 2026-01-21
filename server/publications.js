@@ -59,25 +59,6 @@ Meteor.publish('userCollection', function(options = {}) {
   return CollectionItems.find(query, findOptions);
 });
 
-// Publish games for user's collection items (legacy - use userCollectionWithGames instead)
-Meteor.publish('collectionGames', async function() {
-  if (!this.userId) {
-    this.ready();
-    return;
-  }
-
-  const itemsCursor = CollectionItems.find({ userId: this.userId });
-  const items = await itemsCursor.fetchAsync();
-  const gameIds = items.map(item => item.gameId).filter(Boolean);
-
-  if (gameIds.length > 0) {
-    return Games.find({ _id: { $in: gameIds } });
-  }
-
-  this.ready();
-  return;
-});
-
 // Unified publication for collection page - publishes filtered items AND their games
 Meteor.publish('userCollectionWithGames', async function(options = {}) {
   check(options, {
