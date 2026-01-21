@@ -8,7 +8,7 @@ import { CollectionFilters } from '../components/CollectionFilters.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 24;
 
 const CollectionContent = {
   oninit(vnode) {
