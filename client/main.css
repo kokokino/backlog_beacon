@@ -145,6 +145,10 @@ header nav a.logout {
   object-fit: cover;
 }
 
+.game-card .game-cover.clickable {
+  cursor: pointer;
+}
+
 .game-card .game-info {
   padding: 1rem;
   flex: 1;

@@ -78,9 +78,12 @@ export const GameCard = {
     const hasLocalCover = !!game.localCoverUrl;
     
     return m('article.game-card', [
-      m('div.game-cover', [
-        m('img', { 
-          src: coverUrl, 
+      m('div.game-cover', {
+        class: collectionItem && onUpdateItem ? 'clickable' : '',
+        onclick: collectionItem && onUpdateItem ? () => onUpdateItem(collectionItem) : null
+      }, [
+        m('img', {
+          src: coverUrl,
           alt: game.title || game.name,
           loading: 'lazy',
           onerror(event) {
