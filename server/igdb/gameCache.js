@@ -59,7 +59,9 @@ async function isCoverFileMissing(localCoverId) {
     if (coverDoc) {
       const version = coverDoc.versions?.original;
       if (version?.path) {
-        isMissing = !fs.existsSync(version.path);
+        const exists = fs.existsSync(version.path);
+        //console.log(`isCoverFileMissing: Checking path: ${version.path}, exists: ${exists}`);
+        isMissing = !exists;
       }
     }
   }
@@ -278,92 +280,106 @@ export async function refreshGame(gameId) {
 // Refresh all games that haven't been updated in the specified time
 export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
   const cutoffDate = new Date(Date.now() - maxAgeMs);
-  
-  const staleGames = await Games.find({
-    updatedAt: { $lt: cutoffDate }
-  }, {
-    fields: { _id: 1, igdbId: 1, coverImageId: 1, localCoverId: 1, igdbChecksum: 1 },
-    limit: 100 // Process in batches
-  }).fetchAsync();
-  
-  if (staleGames.length === 0) {
-    return { refreshed: 0, coversQueued: 0, total: 0 };
-  }
-  
-  const igdbIds = staleGames.map(g => g.igdbId).filter(Boolean);
-  
-  if (igdbIds.length === 0) {
-    return { refreshed: 0, coversQueued: 0, total: staleGames.length };
-  }
-  
-  // Fetch fresh data from IGDB
-  const igdbGames = await getGamesByIds(igdbIds);
-  
-  let refreshedCount = 0;
-  let coversQueuedCount = 0;
-  
-  for (const igdbGame of igdbGames) {
-    const existingGame = staleGames.find(g => g.igdbId === igdbGame.id);
+  const BATCH_SIZE = 500; // Match IGDB API limit
 
-    if (existingGame) {
-      const gameData = transformIgdbGame(igdbGame);
+  let totalRefreshed = 0;
+  let totalCoversQueued = 0;
+  let totalMissingCoversRequeued = 0;
+  let totalProcessed = 0;
+  let batchNumber = 0;
+  let staleGames;
 
-      // Check if cover image changed or if we don't have a local cover
-      const coverChanged = existingGame.coverImageId !== igdbGame.cover?.image_id;
-      const needsCover = !existingGame.localCoverId && igdbGame.cover?.image_id;
+  // Process in batches until no more stale games
+  do {
+    batchNumber++;
 
-      // Clear local cover reference if cover changed
-      if (coverChanged && existingGame.localCoverId) {
-        gameData.localCoverId = null;
-        gameData.localCoverUpdatedAt = null;
-      }
+    staleGames = await Games.find({
+      updatedAt: { $lt: cutoffDate }
+    }, {
+      fields: { _id: 1, igdbId: 1, coverImageId: 1, localCoverId: 1, igdbChecksum: 1 },
+      limit: BATCH_SIZE
+    }).fetchAsync();
 
-      await Games.updateAsync(existingGame._id, { $set: gameData });
-      refreshedCount++;
+    if (staleGames.length === 0) {
+      break;
+    }
 
-      // Queue cover download if cover changed or we don't have one
-      if ((coverChanged || needsCover) && igdbGame.cover?.image_id) {
-        try {
-          await queueCoverDownload(existingGame._id, igdbGame.cover.image_id, 7);
-          coversQueuedCount++;
-        } catch (error) {
-          console.error('Error queueing cover download during refresh:', error);
+    console.log(`refreshStaleGames: Processing batch ${batchNumber} with ${staleGames.length} games`);
+
+    const igdbIds = staleGames.map(g => g.igdbId).filter(Boolean);
+
+    if (igdbIds.length > 0) {
+      // Fetch fresh data from IGDB
+      const igdbGames = await getGamesByIds(igdbIds);
+
+      for (const igdbGame of igdbGames) {
+        const existingGame = staleGames.find(g => g.igdbId === igdbGame.id);
+
+        if (existingGame) {
+          const gameData = transformIgdbGame(igdbGame);
+
+          // Check if cover image changed or if we don't have a local cover
+          const coverChanged = existingGame.coverImageId !== igdbGame.cover?.image_id;
+          const needsCover = !existingGame.localCoverId && igdbGame.cover?.image_id;
+
+          // Clear local cover reference if cover changed
+          if (coverChanged && existingGame.localCoverId) {
+            gameData.localCoverId = null;
+            gameData.localCoverUpdatedAt = null;
+          }
+
+          await Games.updateAsync(existingGame._id, { $set: gameData });
+          totalRefreshed++;
+
+          // Queue cover download if cover changed or we don't have one
+          if ((coverChanged || needsCover) && igdbGame.cover?.image_id) {
+            try {
+              await queueCoverDownload(existingGame._id, igdbGame.cover.image_id, 7);
+              totalCoversQueued++;
+            } catch (error) {
+              console.error('Error queueing cover download during refresh:', error);
+            }
+          }
         }
       }
     }
-  }
 
-  // Check for missing cover files on disk and requeue if needed
-  let missingCoversRequeued = 0;
-  for (const game of staleGames) {
-    if (game.coverImageId) {
-      const missing = await isCoverFileMissing(game.localCoverId);
-      if (missing) {
-        // Clear stale reference if it exists
-        if (game.localCoverId) {
-          await Games.updateAsync(game._id, {
-            $set: { localCoverId: null, localCoverUrl: null }
+    // Check for missing cover files on disk and requeue if needed
+    for (const game of staleGames) {
+      if (game.coverImageId) {
+        const missing = await isCoverFileMissing(game.localCoverId);
+        if (missing) {
+          // Clear stale reference if it exists
+          if (game.localCoverId) {
+            await Games.updateAsync(game._id, {
+              $set: { localCoverId: null, localCoverUrl: null }
+            });
+          }
+          // Delete any existing COMPLETED queue item so we can re-queue
+          await CoverQueue.removeAsync({
+            gameId: game._id,
+            status: QueueStatus.COMPLETED
           });
-        }
-        // Delete any existing COMPLETED queue item so we can re-queue
-        await CoverQueue.removeAsync({
-          gameId: game._id,
-          status: QueueStatus.COMPLETED
-        });
-        try {
-          await queueCoverDownload(game._id, game.coverImageId, 7);
-          missingCoversRequeued++;
-        } catch (error) {
-          console.error('Error queueing missing cover download:', error);
+          try {
+            await queueCoverDownload(game._id, game.coverImageId, 7);
+            totalMissingCoversRequeued++;
+          } catch (error) {
+            console.error('Error queueing missing cover download:', error);
+          }
         }
       }
     }
-  }
+
+    totalProcessed += staleGames.length;
+
+  } while (staleGames.length === BATCH_SIZE); // Continue if we got a full batch
+
+  console.log(`refreshStaleGames: Complete. Processed ${totalProcessed} games across ${batchNumber} batch(es)`);
 
   return {
-    refreshed: refreshedCount,
-    coversQueued: coversQueuedCount,
-    missingCoversRequeued,
-    total: staleGames.length
+    refreshed: totalRefreshed,
+    coversQueued: totalCoversQueued,
+    missingCoversRequeued: totalMissingCoversRequeued,
+    total: totalProcessed
   };
 }

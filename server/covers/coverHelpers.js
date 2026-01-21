@@ -48,7 +48,7 @@ export async function getGameCoverUrlAsync(game, size = 'cover_big') {
   
   // If we have a local cover ID but no URL, try to look it up
   if (game.localCoverId) {
-    const coverFile = await GameCovers.collection.findOneAsync(game.localCoverId);
+    const coverFile = await GameCovers.findOneAsync(game.localCoverId);
     if (coverFile) {
       // Use '/' as URIBase to get relative URL
       return GameCovers.link(coverFile, 'original', '/');

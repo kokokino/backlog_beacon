@@ -42,6 +42,9 @@ coverage/
 # Aider
 .aider*
 
+# CDN storage (covers, etc.)
+cdn/
+
 # Private keys (NEVER commit these)
 *.pem
 !public.pem

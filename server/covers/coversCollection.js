@@ -1,13 +1,18 @@
 import { Meteor } from 'meteor/meteor';
+import { Random } from 'meteor/random';
 import { FilesCollection } from 'meteor/ostrio:files';
 import path from 'path';
 import fs from 'fs';
 
 // Determine storage path
-const storagePath = process.env.COVERS_STORAGE_PATH || 
-  (Meteor.isDevelopment 
-    ? path.join(process.cwd(), '.covers')
-    : '/app/covers');
+// In development, process.cwd() is .meteor/local/build/programs/server/
+// We need to go up 5 levels to reach the project root
+const projectRoot = Meteor.isDevelopment
+  ? path.resolve(process.cwd(), '..', '..', '..', '..', '..')
+  : '/app';
+
+const storagePath = process.env.COVERS_STORAGE_PATH ||
+  path.join(projectRoot, 'cdn', 'covers');
 
 // Ensure directory exists
 if (!fs.existsSync(storagePath)) {
@@ -19,7 +24,15 @@ export const GameCovers = new FilesCollection({
   collectionName: 'gameCovers',
   storagePath: storagePath,
   allowClientCode: false,
-  
+
+  // Partition files into subdirectories using gameId (random Meteor IDs distribute evenly)
+  // Filename uses igdbImageId for clarity
+  namingFunction(file) {
+    const dirId = file.meta?.gameId || Random.id();
+    const fileName = file.meta?.igdbImageId || file.meta?.gameId || Random.id();
+    return `${dirId.slice(0, 1)}/${dirId.slice(1, 2)}/${fileName}`;
+  },
+
   onBeforeUpload(file) {
     // Only allow WebP images
     if (file.extension !== 'webp') {
