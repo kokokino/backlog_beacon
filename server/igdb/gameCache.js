@@ -1,7 +1,9 @@
 import { Meteor } from 'meteor/meteor';
+import fs from 'fs';
 import { Games } from '../../imports/lib/collections/games.js';
 import { getGameById, getGamesByIds, getCoverUrl, findGameByName } from './client.js';
-import { queueCoverDownload } from '../covers/coverQueue.js';
+import { queueCoverDownload, CoverQueue, QueueStatus } from '../covers/coverQueue.js';
+import { GameCovers } from '../covers/coversCollection.js';
 
 // Transform IGDB game data to our schema
 function transformIgdbGame(igdbGame) {
@@ -46,6 +48,23 @@ function transformIgdbGame(igdbGame) {
 // Helper to escape regex special characters
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Check if a cover file is missing from disk
+async function isCoverFileMissing(localCoverId) {
+  let isMissing = true;
+
+  if (localCoverId) {
+    const coverDoc = await GameCovers.findOneAsync(localCoverId);
+    if (coverDoc) {
+      const version = coverDoc.versions?.original;
+      if (version?.path) {
+        isMissing = !fs.existsSync(version.path);
+      }
+    }
+  }
+
+  return isMissing;
 }
 
 // Get or fetch a game by IGDB ID
@@ -285,23 +304,23 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
   
   for (const igdbGame of igdbGames) {
     const existingGame = staleGames.find(g => g.igdbId === igdbGame.id);
-    
+
     if (existingGame) {
       const gameData = transformIgdbGame(igdbGame);
-      
+
       // Check if cover image changed or if we don't have a local cover
       const coverChanged = existingGame.coverImageId !== igdbGame.cover?.image_id;
       const needsCover = !existingGame.localCoverId && igdbGame.cover?.image_id;
-      
+
       // Clear local cover reference if cover changed
       if (coverChanged && existingGame.localCoverId) {
         gameData.localCoverId = null;
         gameData.localCoverUpdatedAt = null;
       }
-      
+
       await Games.updateAsync(existingGame._id, { $set: gameData });
       refreshedCount++;
-      
+
       // Queue cover download if cover changed or we don't have one
       if ((coverChanged || needsCover) && igdbGame.cover?.image_id) {
         try {
@@ -313,6 +332,38 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
       }
     }
   }
-  
-  return { refreshed: refreshedCount, coversQueued: coversQueuedCount, total: staleGames.length };
+
+  // Check for missing cover files on disk and requeue if needed
+  let missingCoversRequeued = 0;
+  for (const game of staleGames) {
+    if (game.coverImageId) {
+      const missing = await isCoverFileMissing(game.localCoverId);
+      if (missing) {
+        // Clear stale reference if it exists
+        if (game.localCoverId) {
+          await Games.updateAsync(game._id, {
+            $set: { localCoverId: null, localCoverUrl: null }
+          });
+        }
+        // Delete any existing COMPLETED queue item so we can re-queue
+        await CoverQueue.removeAsync({
+          gameId: game._id,
+          status: QueueStatus.COMPLETED
+        });
+        try {
+          await queueCoverDownload(game._id, game.coverImageId, 7);
+          missingCoversRequeued++;
+        } catch (error) {
+          console.error('Error queueing missing cover download:', error);
+        }
+      }
+    }
+  }
+
+  return {
+    refreshed: refreshedCount,
+    coversQueued: coversQueuedCount,
+    missingCoversRequeued,
+    total: staleGames.length
+  };
 }

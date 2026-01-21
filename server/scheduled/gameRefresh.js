@@ -17,7 +17,7 @@ function startGameRefreshJob() {
   Meteor.setTimeout(async () => {
     console.log('Running initial game data refresh...');
     try {
-      const result = await refreshStaleGames();
+      const result = await refreshStaleGames(0 /*consider all games as stale*/);
       console.log(`Game refresh complete: ${result.refreshed}/${result.total} games updated`);
     } catch (error) {
       console.error('Game refresh failed:', error);
