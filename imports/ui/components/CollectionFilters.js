@@ -45,7 +45,19 @@ export const CollectionFilters = {
             m('option', { value: platform }, platform)
           )
         ]),
-        
+
+        m('select.sort-select', {
+          value: filters.sort || 'name-asc',
+          onchange(event) {
+            onFilterChange({ ...filters, sort: event.target.value });
+          }
+        }, [
+          m('option', { value: 'name-asc' }, 'Name (A-Z)'),
+          m('option', { value: 'name-desc' }, 'Name (Z-A)'),
+          m('option', { value: 'date-desc' }, 'Recently Added'),
+          m('option', { value: 'date-asc' }, 'Oldest Added')
+        ]),
+
         m('label.favorites-toggle', [
           m('input[type=checkbox]', {
             checked: filters.favorite || false,

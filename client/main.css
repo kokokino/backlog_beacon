@@ -302,6 +302,35 @@ header nav a.logout {
   margin-top: 0.5rem;
 }
 
+.pagination-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.results-info {
+  color: var(--pico-muted-color);
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.page-indicator {
+  padding: 0 0.5rem;
+  color: var(--pico-muted-color);
+}
+
+.pagination-buttons button.small {
+  padding: 0.4rem 0.8rem;
+  font-size: 0.875rem;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

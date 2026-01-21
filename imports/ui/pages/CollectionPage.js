@@ -8,6 +8,8 @@ import { CollectionFilters } from '../components/CollectionFilters.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
+const PAGE_SIZE = 25;
+
 const CollectionContent = {
   oninit(vnode) {
     this.items = [];
@@ -17,8 +19,11 @@ const CollectionContent = {
       status: null,
       platform: null,
       favorite: null,
-      search: ''
+      search: '',
+      sort: 'name-asc'
     };
+    this.currentPage = 1;
+    this.totalCount = 0;
     this.loading = true;
     this.editingItem = null;
     this.subscription = null;
@@ -30,6 +35,7 @@ const CollectionContent = {
   oncreate(vnode) {
     this.setupSubscriptions();
     this.setupPlatformsSubscription();
+    this.fetchTotalCount();
   },
 
   onremove(vnode) {
@@ -67,6 +73,31 @@ const CollectionContent = {
     });
   },
 
+  async fetchTotalCount() {
+    const countFilters = {};
+    if (this.filters.status) {
+      countFilters.status = this.filters.status;
+    }
+    if (this.filters.platform) {
+      countFilters.platform = this.filters.platform;
+    }
+    if (this.filters.favorite) {
+      countFilters.favorite = true;
+    }
+    if (this.filters.search && this.filters.search.trim()) {
+      countFilters.search = this.filters.search.trim();
+    }
+
+    try {
+      const count = await Meteor.callAsync('collection.getCount', countFilters);
+      this.totalCount = count;
+      m.redraw();
+    } catch (error) {
+      console.error('Failed to fetch count:', error);
+      this.totalCount = 0;
+    }
+  },
+
   setupSubscriptions() {
     if (this.subscription) {
       this.subscription.stop();
@@ -78,8 +109,17 @@ const CollectionContent = {
     this.loading = true;
     m.redraw();
 
-    // Build options with all filters including search
-    const options = {};
+    // Capture current sort value for use in the autorun closure
+    const currentSort = this.filters.sort || 'name-asc';
+    const sortField = currentSort.startsWith('date') ? 'dateAdded' : 'gameName';
+    const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
+
+    // Build options with all filters including search, sort, and pagination
+    const options = {
+      sort: currentSort,
+      limit: PAGE_SIZE,
+      skip: (this.currentPage - 1) * PAGE_SIZE
+    };
     if (this.filters.status) {
       options.status = this.filters.status;
     }
@@ -102,19 +142,53 @@ const CollectionContent = {
       if (ready) {
         // Query items that have gameName field - this filters out partial docs
         // from collectionPlatforms subscription which only has platforms field
-        const items = CollectionItems.find(
-          { gameName: { $exists: true } },
-          { sort: { gameName: 1 } }
+        let items = CollectionItems.find(
+          { gameName: { $exists: true } }
         ).fetch();
-        this.items = items;
 
-        // Build games lookup from only the games that were published
+        // Build games lookup first (needed for name sorting)
         const gameIds = items.map(item => item.gameId).filter(Boolean);
         const games = Games.find({ _id: { $in: gameIds } }).fetch();
         this.games = {};
         games.forEach(game => {
           this.games[game._id] = game;
         });
+
+        // Sort client-side
+        if (sortField === 'gameName') {
+          // Sort by game.title first, then game.name (case-insensitive)
+          items.sort((a, b) => {
+            const gameA = this.games[a.gameId] || {};
+            const gameB = this.games[b.gameId] || {};
+            const titleA = (gameA.title || gameA.name || a.gameName || '').toLowerCase();
+            const titleB = (gameB.title || gameB.name || b.gameName || '').toLowerCase();
+            if (titleA < titleB) {
+              return sortDirection === 1 ? -1 : 1;
+            }
+            if (titleA > titleB) {
+              return sortDirection === 1 ? 1 : -1;
+            }
+            // Secondary sort by name if titles are equal
+            const nameA = (gameA.name || '').toLowerCase();
+            const nameB = (gameB.name || '').toLowerCase();
+            if (nameA < nameB) {
+              return sortDirection === 1 ? -1 : 1;
+            }
+            if (nameA > nameB) {
+              return sortDirection === 1 ? 1 : -1;
+            }
+            return 0;
+          });
+        } else {
+          // Date sort - use regular comparison
+          items.sort((a, b) => {
+            const valA = a[sortField] || 0;
+            const valB = b[sortField] || 0;
+            return sortDirection === 1 ? valA - valB : valB - valA;
+          });
+        }
+
+        this.items = items;
 
         this.loading = false;
         m.redraw();
@@ -124,7 +198,15 @@ const CollectionContent = {
 
   handleFilterChange(newFilters) {
     const searchChanged = newFilters.search !== this.filters.search;
+    const filtersChanged = newFilters.status !== this.filters.status ||
+                          newFilters.platform !== this.filters.platform ||
+                          newFilters.favorite !== this.filters.favorite;
     this.filters = newFilters;
+
+    // Reset to page 1 when filters change (except sort)
+    if (searchChanged || filtersChanged) {
+      this.currentPage = 1;
+    }
 
     // Debounce search to avoid excessive subscriptions while typing
     if (searchChanged && newFilters.search) {
@@ -133,6 +215,7 @@ const CollectionContent = {
       }
       this.searchDebounceTimer = setTimeout(() => {
         this.setupSubscriptions();
+        this.fetchTotalCount();
       }, 300);
     } else {
       // Non-search filters apply immediately
@@ -140,6 +223,10 @@ const CollectionContent = {
         clearTimeout(this.searchDebounceTimer);
       }
       this.setupSubscriptions();
+      // Fetch new count when filters change
+      if (filtersChanged || searchChanged) {
+        this.fetchTotalCount();
+      }
     }
   },
 
@@ -151,46 +238,63 @@ const CollectionContent = {
       status: null,
       platform: null,
       favorite: null,
-      search: ''
+      search: '',
+      sort: 'name-asc'
     };
+    this.currentPage = 1;
+    this.setupSubscriptions();
+    this.fetchTotalCount();
+  },
+
+  goToPage(page) {
+    const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
+    if (page < 1 || page > maxPages) {
+      return;
+    }
+    this.currentPage = page;
     this.setupSubscriptions();
   },
-  
+
   async handleRemoveItem(itemId) {
     try {
       await Meteor.callAsync('collection.removeItem', itemId);
+      this.fetchTotalCount();
     } catch (err) {
       alert(err.reason || err.message || 'Failed to remove item');
     }
   },
-  
+
   view(vnode) {
+    const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
+    const startIndex = this.totalCount > 0 ? ((this.currentPage - 1) * PAGE_SIZE) + 1 : 0;
+    const endIndex = Math.min(this.currentPage * PAGE_SIZE, this.totalCount);
+
     return m('div.collection-page', [
       m('header.page-header', [
         m('h1', 'My Collection'),
         m('a.button.outline', { href: '/browse', oncreate: m.route.link }, 'Add Games')
       ]),
-      
+
       m(CollectionFilters, {
         filters: this.filters,
         platforms: this.platforms,
         onFilterChange: (newFilters) => this.handleFilterChange(newFilters),
         onClearFilters: () => this.handleClearFilters()
       }),
-      
+
       this.loading && m('div.loading-container', [
         m('div.loading'),
         m('p', 'Loading your collection...')
       ]),
-      
+
       !this.loading && this.items.length === 0 && m('div.empty-state', [
         m('h3', 'No games in your collection'),
         m('p', 'Start by browsing games and adding them to your collection.'),
         m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')
       ]),
-      
-      !this.loading && this.items.length > 0 && m('div.collection-grid', 
-        this.items.map(item => 
+
+      !this.loading && this.items.length > 0 && m('div.collection-grid',
+        this.items.map(item =>
           m(GameCard, {
             key: item._id,
             game: this.games[item.gameId],
@@ -200,11 +304,22 @@ const CollectionContent = {
           })
         )
       ),
-      
-      !this.loading && this.items.length > 0 && m('p.results-count', [
-        m('small', `Showing ${this.items.length} games`)
+
+      !this.loading && this.totalCount > 0 && m('div.pagination-row', [
+        m('span.results-info', `Showing ${startIndex}-${endIndex} of ${this.totalCount.toLocaleString()} games`),
+        this.totalCount > PAGE_SIZE && m('div.pagination-buttons', [
+          m('button.outline.small', {
+            disabled: this.currentPage === 1,
+            onclick: () => this.goToPage(this.currentPage - 1)
+          }, 'Previous'),
+          m('span.page-indicator', `Page ${this.currentPage} of ${maxPages}`),
+          m('button.outline.small', {
+            disabled: this.currentPage >= maxPages,
+            onclick: () => this.goToPage(this.currentPage + 1)
+          }, 'Next')
+        ])
       ]),
-      
+
       this.editingItem && m(EditItemModal, {
         item: this.editingItem,
         game: this.games[this.editingItem.gameId],

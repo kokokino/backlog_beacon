@@ -5,3 +5,4 @@ import './1_create_indexes.js';
 import './2_seed_storefronts.js';
 import './3_create_cover_queue_indexes.js';
 import './4_add_gamename_sort_index.js';
+import './5_add_game_title_name_indexes.js';

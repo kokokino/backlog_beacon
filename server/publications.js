@@ -60,6 +60,7 @@ Meteor.publish('userCollection', function(options = {}) {
 });
 
 // Unified publication for collection page - publishes filtered items AND their games
+// Uses aggregation with $lookup to sort by game.title then game.name
 Meteor.publish('userCollectionWithGames', async function(options = {}) {
   check(options, {
     status: Match.Maybe(String),
@@ -67,6 +68,7 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
     storefront: Match.Maybe(String),
     favorite: Match.Maybe(Boolean),
     search: Match.Maybe(String),
+    sort: Match.Maybe(String),
     limit: Match.Maybe(Number),
     skip: Match.Maybe(Number)
   });
@@ -77,76 +79,136 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
   }
 
   const self = this;
-  const query = { userId: this.userId };
+  const matchStage = { userId: this.userId };
 
   if (options.status) {
-    query.status = options.status;
+    matchStage.status = options.status;
   }
 
   if (options.platform) {
-    query.$or = [
+    matchStage.$or = [
       { platforms: options.platform },
       { platform: options.platform }
     ];
   }
 
   if (options.storefront) {
-    query.storefronts = options.storefront;
+    matchStage.storefronts = options.storefront;
   }
 
   if (options.favorite === true) {
-    query.favorite = true;
+    matchStage.favorite = true;
   }
 
-  // Search on denormalized gameName field (server-side filtering)
+  // Search on denormalized gameName field
   if (options.search && options.search.trim().length > 0) {
-    query.gameName = { $regex: options.search.trim(), $options: 'i' };
+    matchStage.gameName = { $regex: options.search.trim(), $options: 'i' };
   }
 
-  // Sort alphabetically by gameName by default, limit to 50 items
-  const findOptions = {
-    sort: { gameName: 1 },
-    limit: Math.min(options.limit || 50, 200)
-  };
+  const limit = Math.min(options.limit || 25, 200);
+  const skip = options.skip || 0;
+  const sortDirection = (options.sort === 'name-desc' || options.sort === 'date-desc') ? -1 : 1;
+  const isNameSort = !options.sort || options.sort === 'name-asc' || options.sort === 'name-desc';
 
-  if (options.skip) {
-    findOptions.skip = options.skip;
+  // Build aggregation pipeline
+  const pipeline = [
+    { $match: matchStage },
+    // Join with games collection to get title and name for sorting
+    {
+      $lookup: {
+        from: 'games',
+        localField: 'gameId',
+        foreignField: '_id',
+        as: 'game'
+      }
+    },
+    // Unwind the game array (will be single element or empty)
+    {
+      $unwind: {
+        path: '$game',
+        preserveNullAndEmptyArrays: true
+      }
+    },
+    // Add sort fields - use game.title, fallback to game.name, fallback to gameName
+    {
+      $addFields: {
+        sortTitle: {
+          $toLower: {
+            $ifNull: ['$game.title', { $ifNull: ['$game.name', '$gameName'] }]
+          }
+        },
+        sortName: { $toLower: { $ifNull: ['$game.name', ''] } }
+      }
+    }
+  ];
+
+  // Add sort stage based on sort option
+  if (isNameSort) {
+    pipeline.push({
+      $sort: { sortTitle: sortDirection, sortName: sortDirection }
+    });
+  } else {
+    // Date sort
+    pipeline.push({
+      $sort: { dateAdded: sortDirection }
+    });
   }
 
-  // Fetch items to get gameIds
-  const items = await CollectionItems.find(query, findOptions).fetchAsync();
-  const gameIds = items.map(item => item.gameId).filter(Boolean);
+  // Add pagination
+  pipeline.push({ $skip: skip });
+  pipeline.push({ $limit: limit });
 
-  // Manually publish collection items
-  items.forEach(item => {
-    self.added('collectionItems', item._id, item);
+  // Project to remove the temporary sort fields but keep the game data
+  pipeline.push({
+    $project: {
+      sortTitle: 0,
+      sortName: 0
+    }
   });
 
-  // Fetch and publish games
-  if (gameIds.length > 0) {
-    const gameFields = {
-      _id: 1,
-      igdbId: 1,
-      title: 1,
-      name: 1,
-      slug: 1,
-      summary: 1,
-      platforms: 1,
-      genres: 1,
-      releaseYear: 1,
-      developer: 1,
-      publisher: 1,
-      coverUrl: 1,
-      coverImageId: 1,
-      igdbCoverUrl: 1,
-      localCoverId: 1,
-      localCoverUrl: 1,
-      rating: 1
-    };
+  // Execute aggregation
+  const rawCollection = CollectionItems.rawCollection();
+  const results = await rawCollection.aggregate(pipeline).toArray();
 
+  // Publish collection items and collect game data
+  const gameIds = [];
+  results.forEach(result => {
+    // Extract and remove the embedded game before publishing collection item
+    const game = result.game;
+    delete result.game;
+
+    self.added('collectionItems', result._id, result);
+
+    if (game && game._id) {
+      gameIds.push(game._id);
+    }
+  });
+
+  // Fetch and publish full game documents
+  if (gameIds.length > 0) {
     const games = await Games.find(
       { _id: { $in: gameIds } },
-      { fields: gameFields }
+      {
+        fields: {
+          _id: 1,
+          igdbId: 1,
+          title: 1,
+          name: 1,
+          slug: 1,
+          summary: 1,
+          platforms: 1,
+          genres: 1,
+          releaseYear: 1,
+          developer: 1,
+          publisher: 1,
+          coverUrl: 1,
+          coverImageId: 1,
+          igdbCoverUrl: 1,
+          localCoverId: 1,
+          localCoverUrl: 1,
+          rating: 1
+        }
+      }
     ).fetchAsync();
 
     games.forEach(game => {

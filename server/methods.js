@@ -341,7 +341,51 @@ Meteor.methods({
     
     return stats;
   },
-  
+
+  async 'collection.getCount'(filters = {}) {
+    check(filters, {
+      status: Match.Maybe(String),
+      platform: Match.Maybe(String),
+      storefront: Match.Maybe(String),
+      favorite: Match.Maybe(Boolean),
+      search: Match.Maybe(String)
+    });
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+
+    checkRateLimit(this.userId, 'collection.getCount');
+
+    const query = { userId: this.userId };
+
+    if (filters.status) {
+      query.status = filters.status;
+    }
+
+    if (filters.platform) {
+      query.$or = [
+        { platforms: filters.platform },
+        { platform: filters.platform }
+      ];
+    }
+
+    if (filters.storefront) {
+      query.storefronts = filters.storefront;
+    }
+
+    if (filters.favorite === true) {
+      query.favorite = true;
+    }
+
+    if (filters.search && filters.search.trim().length > 0) {
+      query.gameName = { $regex: filters.search.trim(), $options: 'i' };
+    }
+
+    const count = await CollectionItems.countDocuments(query);
+    return count;
+  },
+
   async 'games.search'(query, options = {}) {
     check(query, String);
     check(options, {
