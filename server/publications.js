@@ -59,23 +59,121 @@ Meteor.publish('userCollection', function(options = {}) {
   return CollectionItems.find(query, findOptions);
 });
 
-// Publish games for user's collection items
+// Publish games for user's collection items (legacy - use userCollectionWithGames instead)
 Meteor.publish('collectionGames', async function() {
   if (!this.userId) {
     this.ready();
     return;
   }
-  
+
   const itemsCursor = CollectionItems.find({ userId: this.userId });
   const items = await itemsCursor.fetchAsync();
   const gameIds = items.map(item => item.gameId).filter(Boolean);
-  
+
   if (gameIds.length > 0) {
     return Games.find({ _id: { $in: gameIds } });
   }
-  
+
   this.ready();
   return;
+});
+
+// Unified publication for collection page - publishes filtered items AND their games
+Meteor.publish('userCollectionWithGames', async function(options = {}) {
+  check(options, {
+    status: Match.Maybe(String),
+    platform: Match.Maybe(String),
+    storefront: Match.Maybe(String),
+    favorite: Match.Maybe(Boolean),
+    search: Match.Maybe(String),
+    limit: Match.Maybe(Number),
+    skip: Match.Maybe(Number)
+  });
+
+  if (!this.userId) {
+    this.ready();
+    return;
+  }
+
+  const self = this;
+  const query = { userId: this.userId };
+
+  if (options.status) {
+    query.status = options.status;
+  }
+
+  if (options.platform) {
+    query.$or = [
+      { platforms: options.platform },
+      { platform: options.platform }
+    ];
+  }
+
+  if (options.storefront) {
+    query.storefronts = options.storefront;
+  }
+
+  if (options.favorite === true) {
+    query.favorite = true;
+  }
+
+  // Search on denormalized gameName field (server-side filtering)
+  if (options.search && options.search.trim().length > 0) {
+    query.gameName = { $regex: options.search.trim(), $options: 'i' };
+  }
+
+  // Sort alphabetically by gameName by default, limit to 50 items
+  const findOptions = {
+    sort: { gameName: 1 },
+    limit: Math.min(options.limit || 50, 200)
+  };
+
+  if (options.skip) {
+    findOptions.skip = options.skip;
+  }
+
+  // Fetch items to get gameIds
+  const items = await CollectionItems.find(query, findOptions).fetchAsync();
+  const gameIds = items.map(item => item.gameId).filter(Boolean);
+
+  // Manually publish collection items
+  items.forEach(item => {
+    self.added('collectionItems', item._id, item);
+  });
+
+  // Fetch and publish games
+  if (gameIds.length > 0) {
+    const gameFields = {
+      _id: 1,
+      igdbId: 1,
+      title: 1,
+      name: 1,
+      slug: 1,
+      summary: 1,
+      platforms: 1,
+      genres: 1,
+      releaseYear: 1,
+      developer: 1,
+      publisher: 1,
+      coverUrl: 1,
+      coverImageId: 1,
+      igdbCoverUrl: 1,
+      localCoverId: 1,
+      localCoverUrl: 1,
+      rating: 1
+    };
+
+    const games = await Games.find(
+      { _id: { $in: gameIds } },
+      { fields: gameFields }
+    ).fetchAsync();
+
+    games.forEach(game => {
+      self.added('games', game._id, game);
+    });
+  }
+
+  self.ready();
 });
 
 // Publish games by IDs (for collection display)

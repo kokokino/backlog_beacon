@@ -22,40 +22,63 @@ const CollectionContent = {
     this.loading = true;
     this.editingItem = null;
     this.subscription = null;
-    this.gamesSubscription = null;
+    this.platformsSubscription = null;
     this.computation = null;
+    this.searchDebounceTimer = null;
   },
-  
+
   oncreate(vnode) {
     this.setupSubscriptions();
+    this.setupPlatformsSubscription();
   },
-  
+
   onremove(vnode) {
     if (this.subscription) {
       this.subscription.stop();
     }
-    if (this.gamesSubscription) {
-      this.gamesSubscription.stop();
+    if (this.platformsSubscription) {
+      this.platformsSubscription.stop();
     }
     if (this.computation) {
       this.computation.stop();
     }
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
   },
-  
+
+  setupPlatformsSubscription() {
+    // Separate lightweight subscription just for platform filter options
+    this.platformsSubscription = Meteor.subscribe('collectionPlatforms');
+    Tracker.autorun(() => {
+      if (this.platformsSubscription.ready()) {
+        const platformSet = new Set();
+        CollectionItems.find({}, { fields: { platforms: 1, platform: 1 } }).forEach(item => {
+          if (item.platform) {
+            platformSet.add(item.platform);
+          }
+          if (item.platforms) {
+            item.platforms.forEach(platform => platformSet.add(platform));
+          }
+        });
+        this.platforms = Array.from(platformSet).sort();
+        m.redraw();
+      }
+    });
+  },
+
   setupSubscriptions() {
     if (this.subscription) {
       this.subscription.stop();
     }
-    if (this.gamesSubscription) {
-      this.gamesSubscription.stop();
-    }
     if (this.computation) {
       this.computation.stop();
     }
-    
+
     this.loading = true;
     m.redraw();
-    
+
+    // Build options with all filters including search
     const options = {};
     if (this.filters.status) {
       options.status = this.filters.status;
@@ -66,51 +89,64 @@ const CollectionContent = {
     if (this.filters.favorite) {
       options.favorite = true;
     }
-    
-    this.subscription = Meteor.subscribe('userCollection', options);
-    this.gamesSubscription = Meteor.subscribe('collectionGames');
-    
+    if (this.filters.search && this.filters.search.trim()) {
+      options.search = this.filters.search.trim();
+    }
+
+    // Use unified publication that returns both items AND their games
+    this.subscription = Meteor.subscribe('userCollectionWithGames', options);
+
     this.computation = Tracker.autorun(() => {
-      const ready = this.subscription.ready() && this.gamesSubscription.ready();
-      
+      const ready = this.subscription.ready();
+
       if (ready) {
-        let items = CollectionItems.find({}, { sort: { dateAdded: -1 } }).fetch();
-        
-        if (this.filters.search) {
-          const gameIds = Games.find({
-            title: { $regex: this.filters.search, $options: 'i' }
-          }).fetch().map(game => game._id);
-          items = items.filter(item => gameIds.includes(item.gameId));
-        }
-        
+        // Query items that have gameName field - this filters out partial docs
+        // from collectionPlatforms subscription which only has platforms field
+        const items = CollectionItems.find(
+          { gameName: { $exists: true } },
+          { sort: { gameName: 1 } }
+        ).fetch();
         this.items = items;
-        
-        const allGames = Games.find({}).fetch();
+
+        // Build games lookup from only the games that were published
+        const gameIds = items.map(item => item.gameId).filter(Boolean);
+        const games = Games.find({ _id: { $in: gameIds } }).fetch();
         this.games = {};
-        allGames.forEach(game => {
+        games.forEach(game => {
           this.games[game._id] = game;
         });
-        
-        const platformSet = new Set();
-        items.forEach(item => {
-          if (item.platform) {
-            platformSet.add(item.platform);
-          }
-        });
-        this.platforms = Array.from(platformSet).sort();
-        
+
         this.loading = false;
         m.redraw();
       }
     });
   },
-  
+
   handleFilterChange(newFilters) {
+    const searchChanged = newFilters.search !== this.filters.search;
     this.filters = newFilters;
-    this.setupSubscriptions();
+
+    // Debounce search to avoid excessive subscriptions while typing
+    if (searchChanged && newFilters.search) {
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
+      }
+      this.searchDebounceTimer = setTimeout(() => {
+        this.setupSubscriptions();
+      }, 300);
+    } else {
+      // Non-search filters apply immediately
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
+      }
+      this.setupSubscriptions();
+    }
   },
-  
+
   handleClearFilters() {
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+    }
     this.filters = {
       status: null,
       platform: null,
