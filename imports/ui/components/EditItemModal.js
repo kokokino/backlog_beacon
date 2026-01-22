@@ -3,6 +3,7 @@ import { Meteor } from 'meteor/meteor';
 import { COLLECTION_STATUSES, STATUS_LABELS } from '../../lib/collections/collectionItems.js';
 import { StorefrontSelect } from './StorefrontSelect.js';
 import { PlatformSelect } from './PlatformSelect.js';
+import { ExternalGameLinks } from './ExternalGameLinks.js';
 
 export const EditItemModal = {
   oninit(vnode) {
@@ -126,7 +127,9 @@ export const EditItemModal = {
         m('p', [
           m('strong', game?.title || game?.name || item?.gameName || 'Unknown Game')
         ]),
-        
+
+        m(ExternalGameLinks, { game }),
+
         this.error && m('p.error-message', this.error),
         
         m('form', {

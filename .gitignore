@@ -39,8 +39,9 @@ coverage/
 # client/compatibility/
 # packages/
 
-# Aider
+# AI tools
 .aider*
+.claude/
 
 # CDN storage (covers, etc.)
 cdn/
