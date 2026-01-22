@@ -5,26 +5,19 @@ import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems, COLLECTION_STATUSES } from '../imports/lib/collections/collectionItems.js';
 import { checkSubscription } from '../imports/hub/subscriptions.js';
 import { getValidStorefrontIds } from '../imports/lib/constants/storefronts.js';
+import { checkDistributedRateLimit } from './lib/distributedRateLimit.js';
 
-const rateLimiter = new Map();
 const RATE_LIMIT_WINDOW = 1000;
 const RATE_LIMIT_MAX = 10;
 
-function checkRateLimit(userId, methodName) {
-  const key = `${userId}:${methodName}`;
-  const now = Date.now();
-  const record = rateLimiter.get(key);
-  
-  if (!record || now - record.timestamp > RATE_LIMIT_WINDOW) {
-    rateLimiter.set(key, { timestamp: now, count: 1 });
-    return true;
-  }
-  
-  if (record.count >= RATE_LIMIT_MAX) {
+async function checkRateLimit(userId, methodName) {
+  const key = `method:${userId}:${methodName}`;
+  const result = await checkDistributedRateLimit(key, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW);
+
+  if (!result.allowed) {
     throw new Meteor.Error('rate-limited', 'Too many requests. Please slow down.');
   }
-  
-  record.count++;
+
   return true;
 }
 
@@ -67,7 +60,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.addItem');
+    await checkRateLimit(this.userId, 'collection.addItem');
     validateStatus(status);
     
     const game = await Games.findOneAsync(gameId);
@@ -133,7 +126,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.updateItem');
+    await checkRateLimit(this.userId, 'collection.updateItem');
     
     const item = await CollectionItems.findOneAsync(itemId);
     if (!item) {
@@ -185,7 +178,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.removeItem');
+    await checkRateLimit(this.userId, 'collection.removeItem');
     
     const item = await CollectionItems.findOneAsync(itemId);
     if (!item) {
@@ -207,7 +200,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.toggleFavorite');
+    await checkRateLimit(this.userId, 'collection.toggleFavorite');
     
     const item = await CollectionItems.findOneAsync(itemId);
     if (!item) {
@@ -236,7 +229,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.setStatus');
+    await checkRateLimit(this.userId, 'collection.setStatus');
     validateStatus(status);
     
     const item = await CollectionItems.findOneAsync(itemId);
@@ -268,7 +261,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
     
-    checkRateLimit(this.userId, 'collection.getStats');
+    await checkRateLimit(this.userId, 'collection.getStats');
     
     const items = await CollectionItems.find({ userId: this.userId }).fetchAsync();
     
@@ -355,7 +348,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
 
-    checkRateLimit(this.userId, 'collection.getCount');
+    await checkRateLimit(this.userId, 'collection.getCount');
 
     const query = { userId: this.userId };
 
@@ -397,7 +390,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
 
-    checkRateLimit(this.userId, 'games.count');
+    await checkRateLimit(this.userId, 'games.count');
 
     const query = {};
 
@@ -434,7 +427,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
 
-    checkRateLimit(this.userId, 'games.search');
+    await checkRateLimit(this.userId, 'games.search');
     
     const limit = Math.min(options.limit || 20, 100);
     const searchQuery = {};

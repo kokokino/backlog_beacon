@@ -1,21 +1,10 @@
 import { Meteor } from 'meteor/meteor';
 import jwt from 'jsonwebtoken';
 import { validateToken } from './client.js';
+import { UsedNonces } from '../lib/collections/usedNonces.js';
 
-// Cache for used nonces (in production, use Redis or MongoDB)
-const usedNonces = new Set();
-const NONCE_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
-
-// Clean up old nonces periodically
-if (Meteor.isServer) {
-  Meteor.setInterval(() => {
-    // In a real implementation, nonces would have timestamps
-    // For now, we just clear the set periodically
-    if (usedNonces.size > 10000) {
-      usedNonces.clear();
-    }
-  }, 5 * 60 * 1000); // Every 5 minutes
-}
+// Nonces are stored in MongoDB with TTL index (auto-expires after 10 minutes)
+// See migration 6_create_used_nonces_ttl_index.js
 
 /**
  * Validate an SSO token from the Hub
@@ -48,12 +37,22 @@ export async function validateSsoToken(token) {
     }
     
     // Check nonce hasn't been used (prevent replay attacks)
+    // Uses MongoDB with TTL index - atomic insert ensures only one instance can use each nonce
     if (decoded.nonce) {
-      if (usedNonces.has(decoded.nonce)) {
-        console.warn('Nonce already used:', decoded.nonce);
-        return { valid: false, error: 'nonce_reused' };
+      try {
+        await UsedNonces.insertAsync({
+          _id: decoded.nonce,
+          createdAt: new Date()
+        });
+      } catch (error) {
+        // Duplicate key error means nonce was already used
+        if (error.code === 11000 || error.message?.includes('duplicate key')) {
+          console.warn('Nonce already used:', decoded.nonce);
+          return { valid: false, error: 'nonce_reused' };
+        }
+        // Other errors - log but don't block (fail open for availability)
+        console.error('Error recording nonce:', error.message);
       }
-      usedNonces.add(decoded.nonce);
     }
     
     // Optionally validate with Hub API for fresh data

@@ -58,27 +58,27 @@ export async function queueMultipleCoverDownloads(games, priority = 5) {
   return queuedIds;
 }
 
-// Get next item to process
-export async function getNextQueueItem() {
-  const item = await CoverQueue.findOneAsync(
+// Atomically claim the next queue item for processing
+// Uses findOneAndUpdate to ensure only one instance can claim each item
+export async function claimNextQueueItem(instanceId) {
+  const result = await CoverQueue.rawCollection().findOneAndUpdate(
     { status: QueueStatus.PENDING },
-    { sort: { priority: 1, createdAt: 1 } }
-  );
-  
-  if (!item) {
-    return null;
-  }
-  
-  // Mark as processing
-  await CoverQueue.updateAsync(item._id, {
-    $set: {
-      status: QueueStatus.PROCESSING,
-      updatedAt: new Date()
+    {
+      $set: {
+        status: QueueStatus.PROCESSING,
+        claimedBy: instanceId,
+        claimedAt: new Date(),
+        updatedAt: new Date()
+      },
+      $inc: { attempts: 1 }
     },
-    $inc: { attempts: 1 }
-  });
-  
-  return CoverQueue.findOneAsync(item._id);
+    {
+      sort: { priority: 1, createdAt: 1 },
+      returnDocument: 'after'
+    }
+  );
+
+  return result || null;
 }
 
 // Mark item as completed

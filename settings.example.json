@@ -12,6 +12,8 @@
     "igdb": {
       "clientId": "YOUR_TWITCH_CLIENT_ID",
       "clientSecret": "YOUR_TWITCH_CLIENT_SECRET"
-    }
+    },
+    "isWorkerInstance": true,
+    "isSchedulerInstance": true
   }
 }

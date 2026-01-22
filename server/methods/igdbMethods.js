@@ -4,20 +4,17 @@ import { searchGames, isConfigured, getCoverUrl } from '../igdb/client.js';
 import { searchAndCacheGame, getOrFetchGame, refreshStaleGames } from '../igdb/gameCache.js';
 import { Games } from '../../imports/lib/collections/games.js';
 import { queueCoverDownload, queueMultipleCoverDownloads } from '../covers/coverQueue.js';
+import { checkCooldownRateLimit } from '../lib/distributedRateLimit.js';
 
-// Rate limiting
-const searchRateLimiter = new Map();
+// Rate limiting (distributed across instances)
 const SEARCH_RATE_LIMIT_MS = 500;
 
-function checkSearchRateLimit(userId) {
-  const now = Date.now();
-  const lastSearch = searchRateLimiter.get(userId);
-  
-  if (lastSearch && now - lastSearch < SEARCH_RATE_LIMIT_MS) {
+async function checkSearchRateLimit(userId) {
+  const result = await checkCooldownRateLimit(`igdb-search:${userId}`, SEARCH_RATE_LIMIT_MS);
+
+  if (!result.allowed) {
     throw new Meteor.Error('rate-limited', 'Please wait before searching again');
   }
-  
-  searchRateLimiter.set(userId, now);
 }
 
 function transformIgdbGameForCache(igdbGame) {
@@ -74,7 +71,7 @@ Meteor.methods({
       throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
     }
     
-    checkSearchRateLimit(this.userId);
+    await checkSearchRateLimit(this.userId);
     
     if (query.trim().length < 2) {
       return [];
@@ -106,7 +103,7 @@ Meteor.methods({
       throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
     }
     
-    checkSearchRateLimit(this.userId);
+    await checkSearchRateLimit(this.userId);
     
     if (query.trim().length < 3) {
       return [];

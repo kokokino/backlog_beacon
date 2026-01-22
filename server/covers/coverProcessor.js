@@ -1,8 +1,9 @@
 import { Meteor } from 'meteor/meteor';
+import { Random } from 'meteor/random';
 import sharp from 'sharp';
 import { GameCovers } from './coversCollection.js';
 import {
-  getNextQueueItem,
+  claimNextQueueItem,
   markQueueItemCompleted,
   markQueueItemFailed,
   getQueueStats,
@@ -12,8 +13,8 @@ import {
 import { Games } from '../../imports/lib/collections/games.js';
 import { getCoverUrl } from '../igdb/client.js';
 
-// Processing state
-let isProcessing = false;
+// Processing state - instanceId ensures each server instance is identifiable
+let instanceId = null;
 let processingInterval = null;
 let cleanupInterval = null;
 const PROCESS_INTERVAL_MS = 2000;
@@ -99,41 +100,33 @@ async function processQueueItem(item) {
   return fileObj._id;
 }
 
-// Main processing loop
+// Main processing loop - uses atomic claiming to prevent race conditions
 async function processQueue() {
-  if (isProcessing) {
-    return;
-  }
-  
-  isProcessing = true;
-  
   try {
-    const item = await getNextQueueItem();
-    
+    // Atomic claim - only one instance can get each item
+    const item = await claimNextQueueItem(instanceId);
+
     if (!item) {
-      isProcessing = false;
       return;
     }
-    
+
     // console.log(`CoverProcessor: Found queue item for game ${item.gameId}`);
-    
+
     try {
       const coverId = await processQueueItem(item);
       await markQueueItemCompleted(item._id, coverId);
-      
+
       // Small delay to respect IGDB rate limits
       await new Promise(resolve => setTimeout(resolve, IGDB_REQUEST_DELAY_MS));
-      
+
     } catch (error) {
       console.error(`CoverProcessor: Failed to process ${item.gameId}:`, error.message);
       await markQueueItemFailed(item._id, error.message);
     }
-    
+
   } catch (error) {
     console.error('CoverProcessor: Queue processing error:', error);
   }
-  
-  isProcessing = false;
 }
 
 // Queue existing games that need covers
@@ -187,8 +180,10 @@ export function startCoverProcessor() {
     console.log('CoverProcessor: Already running');
     return;
   }
-  
-  console.log('CoverProcessor: Starting background processor');
+
+  // Generate unique instance ID for distributed locking
+  instanceId = Random.id();
+  console.log(`CoverProcessor: Starting background processor (instance: ${instanceId})`);
   
   // Log initial queue stats, cleanup old items, and queue existing games
   Meteor.defer(async () => {

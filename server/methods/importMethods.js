@@ -6,21 +6,18 @@ import { CollectionItems } from '../../imports/lib/collections/collectionItems.j
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { isConfigured } from '../igdb/client.js';
+import { checkCooldownRateLimit } from '../lib/distributedRateLimit.js';
 
-// Rate limiting for imports
-const importRateLimiter = new Map();
+// Rate limiting for imports (distributed across instances)
 const IMPORT_RATE_LIMIT_MS = 60000; // 1 minute between imports
 
-function checkImportRateLimit(userId) {
-  const now = Date.now();
-  const lastImport = importRateLimiter.get(userId);
-  
-  if (lastImport && now - lastImport < IMPORT_RATE_LIMIT_MS) {
-    const waitSeconds = Math.ceil((IMPORT_RATE_LIMIT_MS - (now - lastImport)) / 1000);
+async function checkImportRateLimit(userId) {
+  const result = await checkCooldownRateLimit(`import:${userId}`, IMPORT_RATE_LIMIT_MS);
+
+  if (!result.allowed) {
+    const waitSeconds = Math.ceil(result.waitMs / 1000);
     throw new Meteor.Error('rate-limited', `Please wait ${waitSeconds} seconds before importing again`);
   }
-  
-  importRateLimiter.set(userId, now);
 }
 
 Meteor.methods({
@@ -50,7 +47,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
     }
     
-    checkImportRateLimit(this.userId);
+    await checkImportRateLimit(this.userId);
     
     if (csvContent.length > 10 * 1024 * 1024) { // 10MB limit
       throw new Meteor.Error('file-too-large', 'CSV file is too large (max 10MB)');
@@ -95,7 +92,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
     }
     
-    checkImportRateLimit(this.userId);
+    await checkImportRateLimit(this.userId);
     
     if (csvContent.length > 10 * 1024 * 1024) { // 10MB limit
       throw new Meteor.Error('file-too-large', 'CSV file is too large (max 10MB)');
@@ -120,7 +117,7 @@ Meteor.methods({
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
     }
     
-    checkImportRateLimit(this.userId);
+    await checkImportRateLimit(this.userId);
     
     if (games.length > 500) {
       throw new Meteor.Error('too-many-games', 'Cannot import more than 500 games at once');

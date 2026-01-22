@@ -1,8 +1,8 @@
 import { Meteor } from 'meteor/meteor';
+import { waitForRateLimit } from '../lib/distributedRateLimit.js';
 
-// IGDB API client with rate limiting
-// Rate limit: 4 requests per second
-// We use a token bucket approach
+// IGDB API client with distributed rate limiting
+// Rate limit: 4 requests per second (shared across all instances)
 
 const RATE_LIMIT_REQUESTS = 4;
 const RATE_LIMIT_WINDOW_MS = 1000;
@@ -10,8 +10,6 @@ const MAX_BATCH_SIZE = 500;
 
 let accessToken = null;
 let tokenExpiresAt = null;
-let lastRequestTime = 0;
-let requestsInWindow = 0;
 
 // Get Twitch OAuth token for IGDB API
 async function getAccessToken() {
@@ -48,27 +46,15 @@ async function getAccessToken() {
   return accessToken;
 }
 
-// Rate-limited request to IGDB API
+// Rate-limited request to IGDB API (distributed across all instances)
 async function makeRequest(endpoint, body) {
   const token = await getAccessToken();
   const clientId = Meteor.settings.private?.igdb?.clientId;
-  
-  // Rate limiting
-  const now = Date.now();
-  if (now - lastRequestTime > RATE_LIMIT_WINDOW_MS) {
-    requestsInWindow = 0;
-    lastRequestTime = now;
-  }
-  
-  if (requestsInWindow >= RATE_LIMIT_REQUESTS) {
-    const waitTime = RATE_LIMIT_WINDOW_MS - (now - lastRequestTime);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-    requestsInWindow = 0;
-    lastRequestTime = Date.now();
-  }
-  
-  requestsInWindow++;
-  
+
+  // Distributed rate limiting - waits until a slot is available
+  // This ensures all instances combined don't exceed 4 req/sec
+  await waitForRateLimit('igdb', RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW_MS);
+
   const response = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
     method: 'POST',
     headers: {
@@ -78,12 +64,12 @@ async function makeRequest(endpoint, body) {
     },
     body: body
   });
-  
+
   if (!response.ok) {
     const errorText = await response.text();
     throw new Meteor.Error('igdb-request-failed', `IGDB API error: ${response.status} - ${errorText}`);
   }
-  
+
   return response.json();
 }
 

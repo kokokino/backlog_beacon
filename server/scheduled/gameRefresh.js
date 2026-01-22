@@ -45,9 +45,15 @@ function stopGameRefreshJob() {
   }
 }
 
-// Start the job on server startup
+// Start the job on server startup (only on scheduler instance for multi-instance deployments)
 Meteor.startup(() => {
-  startGameRefreshJob();
+  const isSchedulerInstance = Meteor.settings.private?.isSchedulerInstance !== false;
+  if (isSchedulerInstance) {
+    console.log('Starting game refresh scheduler (scheduler instance)...');
+    startGameRefreshJob();
+  } else {
+    console.log('Game refresh scheduler disabled (not a scheduler instance)');
+  }
 });
 
 export { startGameRefreshJob, stopGameRefreshJob };

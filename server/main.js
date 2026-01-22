@@ -80,9 +80,14 @@ Meteor.startup(async () => {
     console.error('Error stack:', error.stack);
   }
   
-  // Start cover image processor
-  console.log('Starting cover image processor...');
-  startCoverProcessor();
+  // Start cover image processor (only on worker instance for multi-instance deployments)
+  const isWorkerInstance = Meteor.settings.private?.isWorkerInstance !== false;
+  if (isWorkerInstance) {
+    console.log('Starting cover image processor (worker instance)...');
+    startCoverProcessor();
+  } else {
+    console.log('Cover processor disabled (not a worker instance)');
+  }
   
   // Debug: Check collection counts
   const gamesCount = await Games.find().countAsync();
