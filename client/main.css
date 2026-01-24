@@ -1060,20 +1060,24 @@ dialog article footer button {
 }
 
 .import-results-summary {
-  background: var(--pico-ins-color);
-  color: white;
+  background: color-mix(in srgb, var(--pico-ins-color) 15%, transparent);
+  border: 1px solid var(--pico-ins-color);
+  color: var(--pico-color);
   padding: 1rem;
   border-radius: var(--pico-border-radius);
 }
 
-.import-results-summary.has-errors,
-.import-results-summary.has-errors p {
-  background: var(--pico-primary-background);
-  color: white;
+.import-results-summary.has-errors {
+  background: color-mix(in srgb, var(--pico-primary-background) 15%, transparent);
+  border: 1px solid var(--pico-primary-background);
 }
 
 .import-results-summary p {
   margin: 0.5rem 0;
+}
+
+.import-updated {
+  margin-top: 1rem;
 }
 
 .import-errors {
