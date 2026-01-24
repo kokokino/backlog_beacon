@@ -101,7 +101,7 @@ const BrowseContent = {
     if (this.computation) {
       this.computation.stop();
     }
-    
+
     this.localLoading = true;
     m.redraw();
 
@@ -115,16 +115,19 @@ const BrowseContent = {
 
     this.subscription = Meteor.subscribe('gamesBrowse', options);
     this.collectionSub = Meteor.subscribe('userCollection', {});
-    
+
+    // Fetch ALL gameIds for collection check (not limited by subscription)
+    Meteor.callAsync('collection.getGameIds').then(gameIds => {
+      this.collectionGameIds = new Set(gameIds);
+      m.redraw();
+    });
+
     this.computation = Tracker.autorun(() => {
       const ready = this.subscription.ready() && this.collectionSub.ready();
-      
+
       if (ready) {
         this.localGames = Games.find({}, { sort: { title: 1 } }).fetch();
-        
-        const items = CollectionItems.find({}).fetch();
-        this.collectionGameIds = new Set(items.map(item => item.gameId));
-        
+
         this.localLoading = false;
         m.redraw();
       }

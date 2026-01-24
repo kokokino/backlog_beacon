@@ -475,17 +475,30 @@ Meteor.methods({
   
   async 'user.hasAccess'(requiredProductIds) {
     check(requiredProductIds, Match.Optional([String]));
-    
+
     if (!this.userId) {
       return false;
     }
-    
+
     const products = requiredProductIds || Meteor.settings.public?.requiredProducts || [];
-    
+
     if (products.length === 0) {
       return true;
     }
-    
+
     return await checkSubscription(this.userId, products);
+  },
+
+  async 'collection.getGameIds'() {
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+
+    const items = await CollectionItems.find(
+      { userId: this.userId, gameId: { $exists: true, $ne: null } },
+      { fields: { gameId: 1 } }
+    ).fetchAsync();
+
+    return items.map(item => item.gameId);
   }
 });
