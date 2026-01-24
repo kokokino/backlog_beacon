@@ -188,58 +188,70 @@ export async function searchAndCacheGame(name, platform = null) {
   if (!name || name.trim().length === 0) {
     return null;
   }
-  
+
   const searchName = name.toLowerCase().trim();
-  
+
   // Check local cache first (exact match)
   let game = await Games.findOneAsync({ searchName: searchName });
-  
+
   if (game) {
+    // console.log(`[Cache] Exact match for "${name}" → "${game.name}" (igdbId: ${game.igdbId})`);
     return game;
   }
-  
+
   // Try partial match in cache
-  game = await Games.findOneAsync({ 
-    searchName: { $regex: `^${escapeRegex(searchName)}$`, $options: 'i' } 
+  game = await Games.findOneAsync({
+    searchName: { $regex: `^${escapeRegex(searchName)}$`, $options: 'i' }
   });
-  
+
   if (game) {
+    // console.log(`[Cache] Regex match for "${name}" → "${game.name}" (igdbId: ${game.igdbId})`);
     return game;
   }
-  
+
   // Search IGDB
+  // console.log(`[Cache] No cache hit for "${name}", searching IGDB...`);
   const igdbGame = await findGameByName(name, platform);
-  
+
   if (!igdbGame) {
+    // console.log(`[Cache] IGDB returned null for "${name}"`);
     return null;
   }
-  
+
+  // console.log(`[Cache] IGDB found "${igdbGame.name}" (id: ${igdbGame.id}) for "${name}"`);
+
   // Check if we already have this game by IGDB ID
   game = await Games.findOneAsync({ igdbId: igdbGame.id });
-  
+
   if (game) {
+    // console.log(`[Cache] Found existing game by igdbId: "${game.name}"`);
     return game;
   }
   
   // Transform and save
   const gameData = transformIgdbGame(igdbGame);
   gameData.createdAt = new Date();
-  
+
+  // console.log(`[Cache] Inserting new game: "${gameData.name}" (igdbId: ${gameData.igdbId})`);
+
   try {
     const gameId = await Games.insertAsync(gameData);
     const newGame = await Games.findOneAsync(gameId);
-    
+
+    // console.log(`[Cache] Inserted game id: ${gameId}, name: "${newGame?.name}"`);
+
     // Queue cover download if has cover image
     if (newGame && newGame.coverImageId) {
       queueCoverDownload(newGame._id, newGame.coverImageId, 5).catch(error => {
         console.error('Error queueing cover download:', error);
       });
     }
-    
+
     return newGame;
   } catch (error) {
     // Handle duplicate key error (race condition)
     if (error.message.includes('duplicate key')) {
+      // console.log(`[Cache] Duplicate key, fetching existing game by igdbId: ${igdbGame.id}`);
       return Games.findOneAsync({ igdbId: igdbGame.id });
     }
     throw error;

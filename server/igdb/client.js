@@ -215,13 +215,14 @@ function calculateMatchScore(query, igdbName) {
     return 100;
   }
 
-  // IGDB name is a prefix of query (handles subtitle cases)
-  // e.g., "Cat Quest II" matches "Cat Quest II: The Lupus Empire"
+  // IGDB name is a prefix of query (IGDB missing subtitle - different game in series)
+  // e.g., query "Half-Life: Alyx", IGDB "Half-Life" - these are different games
+  // Score low because IGDB is missing specificity the import has
   if (queryLower.startsWith(igdbLower + ':') ||
       queryLower.startsWith(igdbLower + ' -') ||
       queryLower.startsWith(igdbLower + ' –') ||
       queryLower.startsWith(igdbLower + '/')) {
-    return 95;
+    return 60;
   }
 
   // Query is a prefix of IGDB name (reverse case)
@@ -326,50 +327,56 @@ export async function findGameByName(name, platform = null) {
   const patterns = getSearchPatterns(originalName);
   const allResults = [];
 
-  // Build batched queries - group by type for efficiency
+  // Get search patterns for hybrid search
   const searchPatterns = patterns.filter(p => p.type === 'search');
-  const wildcardPatterns = patterns.filter(p => p.type === 'wildcard');
 
-  // Execute search queries (these use IGDB's relevance ranking)
-  for (const pattern of searchPatterns) {
-    try {
-      const body = `
-        search "${pattern.value}";
-        fields name, slug, summary, cover.image_id, platforms.name, genres.name,
-               first_release_date, involved_companies.company.name, involved_companies.developer,
-               involved_companies.publisher, rating, rating_count, updated_at, checksum;
-        limit 15;
-      `;
-      const results = await makeRequest('games', body);
-      allResults.push(...results);
-
-      // If we got good results from exact search, don't need more API calls
-      const hasGoodMatch = results.some(game =>
-        calculateMatchScore(originalName, game.name) >= 80
-      );
-      if (hasGoodMatch) {
-        break;
-      }
-    } catch (error) {
-      console.warn(`Search failed for "${pattern.value}":`, error.message);
-    }
+  // Phase 1: Sorted wildcard search - puts exact/shorter matches first alphabetically
+  // This helps when IGDB's relevance ranking buries exact matches
+  try {
+    const sortedBody = `
+      fields name, slug, summary, cover.image_id, platforms.name, genres.name,
+             first_release_date, involved_companies.company.name, involved_companies.developer,
+             involved_companies.publisher, rating, rating_count, updated_at, checksum;
+      where name ~ *"${searchPatterns[0].value}"*;
+      sort name asc;
+      limit 25;
+    `;
+    const sortedResults = await makeRequest('games', sortedBody);
+    // DEBUG: Log Phase 1 results
+    // console.log(`\n=== IGDB Phase 1 for "${originalName}" ===`);
+    // sortedResults.slice(0, 15).forEach((g, i) => {
+    //   const score = calculateMatchScore(originalName, g.name);
+    //   console.log(`  ${i + 1}. "${g.name}" (score: ${score})`);
+    // });
+    allResults.push(...sortedResults);
+  } catch (error) {
+    console.warn(`Sorted search failed:`, error.message);
   }
 
-  // If no good match yet, try wildcard patterns
-  if (!allResults.some(game => calculateMatchScore(originalName, game.name) >= 80)) {
-    for (const pattern of wildcardPatterns) {
+  // Phase 2: Relevance-ranked search - handles typos and fuzzy matching
+  // Only if we don't have a great match yet
+  if (!allResults.some(game => calculateMatchScore(originalName, game.name) >= 95)) {
+    for (const pattern of searchPatterns) {
       try {
         const body = `
+          search "${pattern.value}";
           fields name, slug, summary, cover.image_id, platforms.name, genres.name,
                  first_release_date, involved_companies.company.name, involved_companies.developer,
                  involved_companies.publisher, rating, rating_count, updated_at, checksum;
-          where name ~ *"${pattern.value}"*;
-          limit 15;
+          limit 25;
         `;
         const results = await makeRequest('games', body);
         allResults.push(...results);
+
+        // If we got good results, don't need more API calls
+        const hasGoodMatch = results.some(game =>
+          calculateMatchScore(originalName, game.name) >= 80
+        );
+        if (hasGoodMatch) {
+          break;
+        }
       } catch (error) {
-        console.warn(`Wildcard search failed for "${pattern.value}":`, error.message);
+        console.warn(`Search failed for "${pattern.value}":`, error.message);
       }
     }
   }
@@ -399,17 +406,33 @@ export async function findGameByName(name, platform = null) {
 
   const bestMatch = scoredResults[0];
 
+  // DEBUG: Log top matches
+  // console.log(`=== Best matches for "${originalName}" ===`);
+  // scoredResults.slice(0, 5).forEach((r, i) => {
+  //   console.log(`  ${i + 1}. "${r.game.name}" (score: ${r.score})`);
+  // });
+  // console.log(`  → Selected: "${bestMatch.game.name}"\n`);
+
   // Accept if score is good enough (> 50%)
   if (bestMatch.score >= 50) {
-    // If platform specified, check if there's a better platform match with similar score
-    if (platform && scoredResults.length > 1) {
+    // Platform matching: only consider if best match score is < 95
+    // (don't override near-perfect/exact name matches due to platform data quirks)
+    if (platform && scoredResults.length > 1 && bestMatch.score < 95) {
       const platformLower = platform.toLowerCase();
-      const platformMatch = scoredResults.find(({ game, score }) =>
-        score >= bestMatch.score - 10 && // Within 10 points of best
-        game.platforms?.some(p => p.name.toLowerCase().includes(platformLower))
+      const bestHasPlatform = bestMatch.game.platforms?.some(p =>
+        p.name.toLowerCase().includes(platformLower)
       );
-      if (platformMatch) {
-        return platformMatch.game;
+
+      // Only look for platform match if best doesn't already have it
+      if (!bestHasPlatform) {
+        const platformMatch = scoredResults.find(({ game, score }) =>
+          score >= bestMatch.score - 10 && // Within 10 points of best
+          game.platforms?.some(p => p.name.toLowerCase().includes(platformLower))
+        );
+        if (platformMatch) {
+          // console.log(`  → Platform override: "${platformMatch.game.name}" has platform "${platform}"`);
+          return platformMatch.game;
+        }
       }
     }
 
