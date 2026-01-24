@@ -3,7 +3,7 @@
     "appName": "Backlog Beacon",
     "appId": "backlog_beacon",
     "hubUrl": "https://kokokino.com",
-    "requiredProducts": ["YOUR_METEOR_PRODUCT_COLLECTION_ID"]
+    "requiredProducts": ["base-monthly"]
   },
   "private": {
     "hubApiKey": "YOUR_SPOKE_API_KEY_HERE",

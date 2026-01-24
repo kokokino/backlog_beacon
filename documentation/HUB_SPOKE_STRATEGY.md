@@ -239,7 +239,7 @@ Checks if a user has an active subscription for specific products.
 // Request
 {
   "userId": "abc123",
-  "requiredProductIds": ["base_monthly_id"]
+  "requiredProductSlugs": ["base_monthly"]
 }
 
 // Response

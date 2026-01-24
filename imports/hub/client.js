@@ -52,8 +52,8 @@ export async function validateToken(token) {
 /**
  * Check subscription status for a user
  */
-export async function checkSubscriptionWithHub(userId, requiredProductIds) {
-  return hubApiRequest('/check-subscription', { userId, requiredProductIds });
+export async function checkSubscriptionWithHub(userId, requiredProductSlugs) {
+  return hubApiRequest('/check-subscription', { userId, requiredProductSlugs });
 }
 
 /**

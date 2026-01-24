@@ -473,14 +473,14 @@ Meteor.methods({
     };
   },
   
-  async 'user.hasAccess'(requiredProductIds) {
-    check(requiredProductIds, Match.Optional([String]));
+  async 'user.hasAccess'(requiredProductSlugs) {
+    check(requiredProductSlugs, Match.Optional([String]));
 
     if (!this.userId) {
       return false;
     }
 
-    const products = requiredProductIds || Meteor.settings.public?.requiredProducts || [];
+    const products = requiredProductSlugs || Meteor.settings.public?.requiredProducts || [];
 
     if (products.length === 0) {
       return true;

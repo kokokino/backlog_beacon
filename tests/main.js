@@ -15,6 +15,9 @@ describe("backlog_beacon", function () {
   }
 
   if (Meteor.isServer) {
+    // Import server methods so they're registered during tests
+    require('../server/methods.js');
+
     it("server is not client", function () {
       assert.strictEqual(Meteor.isClient, false);
     });
@@ -63,13 +66,13 @@ describe("backlog_beacon", function () {
         assert.strictEqual(result, true);
       });
 
-      it("grants access when requiredProductIds is null", async function () {
+      it("grants access when requiredProductSlugs is null", async function () {
         const { checkSubscription } = await import("../imports/hub/subscriptions.js");
         const result = await checkSubscription("fake-user-id", null);
         assert.strictEqual(result, true);
       });
 
-      it("grants access when requiredProductIds is undefined", async function () {
+      it("grants access when requiredProductSlugs is undefined", async function () {
         const { checkSubscription } = await import("../imports/hub/subscriptions.js");
         const result = await checkSubscription("fake-user-id", undefined);
         assert.strictEqual(result, true);

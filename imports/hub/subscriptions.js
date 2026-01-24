@@ -8,12 +8,12 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 /**
  * Check if a user has the required subscriptions
  * @param {string} meteorUserId - The local Meteor user ID
- * @param {string[]} requiredProductIds - Array of required product IDs
+ * @param {string[]} requiredProductSlugs - Array of required product slugs
  * @returns {boolean} - Whether the user has access
  */
-export async function checkSubscription(meteorUserId, requiredProductIds = []) {
+export async function checkSubscription(meteorUserId, requiredProductSlugs = []) {
   // If no products required, always grant access
-  if (!requiredProductIds || requiredProductIds.length === 0) {
+  if (!requiredProductSlugs || requiredProductSlugs.length === 0) {
     return true;
   }
   
@@ -27,7 +27,7 @@ export async function checkSubscription(meteorUserId, requiredProductIds = []) {
   const hubUserId = user.services?.sso?.hubUserId;
   
   // Check local subscription data first
-  const hasLocalAccess = checkLocalSubscriptions(subscriptions, requiredProductIds);
+  const hasLocalAccess = checkLocalSubscriptions(subscriptions, requiredProductSlugs);
   
   if (hasLocalAccess) {
     return true;
@@ -36,7 +36,7 @@ export async function checkSubscription(meteorUserId, requiredProductIds = []) {
   // If no local access, try to refresh from Hub
   if (hubUserId) {
     try {
-      const freshData = await refreshSubscriptionFromHub(meteorUserId, hubUserId, requiredProductIds);
+      const freshData = await refreshSubscriptionFromHub(meteorUserId, hubUserId, requiredProductSlugs);
       return freshData.hasAccess;
     } catch (error) {
       console.error('Failed to refresh subscription from Hub:', error);
@@ -51,17 +51,17 @@ export async function checkSubscription(meteorUserId, requiredProductIds = []) {
 /**
  * Check subscriptions against local cached data
  */
-function checkLocalSubscriptions(subscriptions, requiredProductIds) {
+function checkLocalSubscriptions(subscriptions, requiredProductSlugs) {
   if (!subscriptions || subscriptions.length === 0) {
     return false;
   }
-  
+
   const now = new Date();
-  
+
   // Check if user has any of the required products with active status
-  return requiredProductIds.some(requiredId => {
+  return requiredProductSlugs.some(requiredSlug => {
     return subscriptions.some(sub => {
-      if (sub.productId !== requiredId) return false;
+      if (sub.productSlug !== requiredSlug) return false;
       if (sub.status !== 'active') return false;
       if (sub.validUntil && new Date(sub.validUntil) < now) return false;
       return true;
@@ -72,9 +72,9 @@ function checkLocalSubscriptions(subscriptions, requiredProductIds) {
 /**
  * Refresh subscription data from Hub API
  */
-async function refreshSubscriptionFromHub(meteorUserId, hubUserId, requiredProductIds) {
+async function refreshSubscriptionFromHub(meteorUserId, hubUserId, requiredProductSlugs) {
   // Check cache first
-  const cacheKey = `${hubUserId}:${requiredProductIds.join(',')}`;
+  const cacheKey = `${hubUserId}:${requiredProductSlugs.join(',')}`;
   const cached = subscriptionCache.get(cacheKey);
   
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -82,7 +82,7 @@ async function refreshSubscriptionFromHub(meteorUserId, hubUserId, requiredProdu
   }
   
   // Call Hub API
-  const result = await checkSubscriptionWithHub(hubUserId, requiredProductIds);
+  const result = await checkSubscriptionWithHub(hubUserId, requiredProductSlugs);
   
   // Update local user data
   if (result.subscriptions) {
