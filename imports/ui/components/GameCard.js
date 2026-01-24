@@ -30,9 +30,12 @@ export const GameCard = {
   view(vnode) {
     const { game, collectionItem, onAddToCollection, onUpdateItem, onRemoveItem, showActions = true } = vnode.attrs;
     
-    if (!game) {
+    if (!game && !collectionItem) {
       return m('article.game-card', m('p', 'Game not found'));
     }
+
+    // Handle case where game is not in IGDB but collection item exists
+    const displayName = game ? (game.title || game.name) : (collectionItem?.gameName || 'Unknown Game');
 
     // Get all cover sources for cascading fallback
     const coverSources = getGameCoverSources(game);
@@ -89,7 +92,7 @@ export const GameCard = {
       }, [
         m('img', {
           src: initialCoverUrl,
-          alt: game.title || game.name,
+          alt: displayName,
           loading: 'lazy',
           'data-cover-source': initialSource,
           onerror(event) {
@@ -122,16 +125,16 @@ export const GameCard = {
       ]),
       
       m('div.game-info', [
-        m('h4.game-title', game.title || game.name),
-        
-        game.releaseYear && m('p.game-year', game.releaseYear),
-        
-        game.platforms && game.platforms.length > 0 && m('p.game-platforms', [
+        m('h4.game-title', displayName),
+
+        game?.releaseYear && m('p.game-year', game.releaseYear),
+
+        game?.platforms && game.platforms.length > 0 && m('p.game-platforms', [
           m('small', game.platforms.slice(0, 3).join(', ')),
           game.platforms.length > 3 && m('small', ` +${game.platforms.length - 3} more`)
         ]),
-        
-        game.genres && game.genres.length > 0 && m('p.game-genres', [
+
+        game?.genres && game.genres.length > 0 && m('p.game-genres', [
           m('small', game.genres.slice(0, 2).join(', '))
         ]),
         
