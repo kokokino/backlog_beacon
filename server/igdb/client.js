@@ -146,50 +146,160 @@ export async function getGamesByIds(igdbIds) {
   return allResults;
 }
 
-// Search for game by exact name (for imports)
+// Levenshtein distance for fuzzy string matching
+function levenshteinDistance(str1, str2) {
+  const m = str1.length;
+  const n = str2.length;
+
+  // Create a matrix
+  const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  // Initialize first column and row
+  for (let i = 0; i <= m; i++) {
+    dp[i][0] = i;
+  }
+  for (let j = 0; j <= n; j++) {
+    dp[0][j] = j;
+  }
+
+  // Fill the matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+      }
+    }
+  }
+
+  return dp[m][n];
+}
+
+// Calculate similarity score (0-100) between query and IGDB result
+function calculateMatchScore(query, igdbName) {
+  const queryLower = query.toLowerCase();
+  const igdbLower = igdbName.toLowerCase();
+
+  // Exact match
+  if (queryLower === igdbLower) {
+    return 100;
+  }
+
+  // IGDB name is a prefix of query (handles subtitle cases)
+  // e.g., "Cat Quest II" matches "Cat Quest II: The Lupus Empire"
+  if (queryLower.startsWith(igdbLower + ':') ||
+      queryLower.startsWith(igdbLower + ' -') ||
+      queryLower.startsWith(igdbLower + ' –') ||
+      queryLower.startsWith(igdbLower + '/')) {
+    return 95;
+  }
+
+  // Query is a prefix of IGDB name (reverse case)
+  if (igdbLower.startsWith(queryLower + ':') ||
+      igdbLower.startsWith(queryLower + ' -') ||
+      igdbLower.startsWith(queryLower + ' –')) {
+    return 90;
+  }
+
+  // Calculate Levenshtein-based similarity
+  const distance = levenshteinDistance(queryLower, igdbLower);
+  const maxLen = Math.max(queryLower.length, igdbLower.length);
+  const similarity = ((maxLen - distance) / maxLen) * 100;
+
+  // Boost score if one contains the other
+  if (queryLower.includes(igdbLower) || igdbLower.includes(queryLower)) {
+    return Math.max(similarity, 70);
+  }
+
+  return similarity;
+}
+
+// Generate simplified search variants from a game name
+function getSearchVariants(name) {
+  const variants = [name];
+
+  // Strip subtitle after colon (e.g., "Cat Quest II: The Lupus Empire" -> "Cat Quest II")
+  if (name.includes(':')) {
+    variants.push(name.split(':')[0].trim());
+  }
+
+  // Strip subtitle after dash with spaces (e.g., "Hundred Days - Winemaking Simulator" -> "Hundred Days")
+  if (name.includes(' - ')) {
+    variants.push(name.split(' - ')[0].trim());
+  }
+
+  // Handle en-dash
+  if (name.includes(' – ')) {
+    variants.push(name.split(' – ')[0].trim());
+  }
+
+  // Handle slash notation (e.g., "Zombies Ate My Neighbors/Ghoul Patrol")
+  if (name.includes('/') && !name.includes('://')) {
+    variants.push(name.replace(/\//g, ' and '));
+  }
+
+  // Remove unique variants only
+  return [...new Set(variants)];
+}
+
+// Search for game by name with fuzzy matching (for imports)
 export async function findGameByName(name, platform = null) {
   if (!name || name.trim().length === 0) {
     return null;
   }
-  
-  const sanitizedName = name.replace(/"/g, '\\"').trim();
-  
-  const body = `
-    search "${sanitizedName}";
-    fields name, slug, summary, cover.image_id, platforms.name, genres.name, 
-           first_release_date, involved_companies.company.name, involved_companies.developer,
-           involved_companies.publisher, rating, rating_count, updated_at, checksum;
-    limit 10;
-  `;
-  
-  const results = await makeRequest('games', body);
-  
-  if (results.length === 0) {
-    return null;
-  }
-  
-  // Try to find exact match first
-  const exactMatch = results.find(game => 
-    game.name.toLowerCase() === sanitizedName.toLowerCase()
-  );
-  
-  if (exactMatch) {
-    return exactMatch;
-  }
-  
-  // If platform specified, try to match by platform
-  if (platform && results.length > 1) {
-    const platformLower = platform.toLowerCase();
-    const platformMatch = results.find(game => 
-      game.platforms?.some(p => p.name.toLowerCase().includes(platformLower))
-    );
-    if (platformMatch) {
-      return platformMatch;
+
+  const originalName = name.trim();
+  const searchVariants = getSearchVariants(originalName);
+
+  // Try each search variant
+  for (const searchName of searchVariants) {
+    const sanitizedName = searchName.replace(/"/g, '\\"');
+
+    const body = `
+      search "${sanitizedName}";
+      fields name, slug, summary, cover.image_id, platforms.name, genres.name,
+             first_release_date, involved_companies.company.name, involved_companies.developer,
+             involved_companies.publisher, rating, rating_count, updated_at, checksum;
+      limit 10;
+    `;
+
+    const results = await makeRequest('games', body);
+
+    if (results.length === 0) {
+      continue;
+    }
+
+    // Score all results against the original name
+    const scoredResults = results.map(game => ({
+      game,
+      score: calculateMatchScore(originalName, game.name)
+    }));
+
+    // Sort by score descending
+    scoredResults.sort((a, b) => b.score - a.score);
+
+    const bestMatch = scoredResults[0];
+
+    // Accept if score is good enough (> 50%)
+    if (bestMatch.score >= 50) {
+      // If platform specified, check if there's a better platform match with similar score
+      if (platform && scoredResults.length > 1) {
+        const platformLower = platform.toLowerCase();
+        const platformMatch = scoredResults.find(({ game, score }) =>
+          score >= bestMatch.score - 10 && // Within 10 points of best
+          game.platforms?.some(p => p.name.toLowerCase().includes(platformLower))
+        );
+        if (platformMatch) {
+          return platformMatch.game;
+        }
+      }
+
+      return bestMatch.game;
     }
   }
-  
-  // Return first result as best guess
-  return results[0];
+
+  return null;
 }
 
 // Get cover image URL from IGDB
