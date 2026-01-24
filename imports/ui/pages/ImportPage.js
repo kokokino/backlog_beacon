@@ -451,6 +451,17 @@ const ImportContent = {
             `, Skipped: ${this.darkadiaResult.skipped}`
           ])
         ]),
+        this.darkadiaResult.games.filter(g => g.action === 'updated').length > 0 &&
+          m('div.import-updated', [
+            m('details', { open: true }, [
+              m('summary', `${this.darkadiaResult.updated} games updated`),
+              m('ul', [
+                this.darkadiaResult.games
+                  .filter(g => g.action === 'updated')
+                  .map((game, index) => m('li', { key: index }, game.name))
+              ])
+            ])
+          ]),
         this.darkadiaResult.errors.length > 0 && m('div.import-errors', [
           m('details', { open: true }, [
             m('summary', `${this.darkadiaResult.errors.length} errors`),
