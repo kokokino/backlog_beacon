@@ -1279,3 +1279,8 @@ dialog article footer button {
 .external-game-links .external-link img {
   display: block;
 }
+
+/* Utility class for hiding elements */
+.hidden {
+  display: none !important;
+}

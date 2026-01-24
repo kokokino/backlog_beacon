@@ -1,33 +1,29 @@
 import m from 'mithril';
 import { STATUS_LABELS } from '../../lib/collections/collectionItems.js';
 
-// Helper to get the best available cover URL for a game
-function getGameCoverUrl(game) {
+// SVG placeholder for games without covers
+const noCoverSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
+
+// Helper to get all available cover sources for a game
+function getGameCoverSources(game) {
   if (!game) {
-    return null;
+    return { localCoverUrl: null, igdbCoverUrl: null, noCoverSvg };
   }
-  
-  // If we have a stored local cover URL, use it directly
-  if (game.localCoverUrl) {
-    return game.localCoverUrl;
-  }
-  
-  // Fall back to IGDB URL
+
+  // Build local cover URL if available
+  const localCoverUrl = game.localCoverUrl || null;
+
+  // Build IGDB cover URL from available fields
+  let igdbCoverUrl = null;
   if (game.coverImageId) {
-    return `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
+    igdbCoverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
+  } else if (game.igdbCoverUrl) {
+    igdbCoverUrl = game.igdbCoverUrl;
+  } else if (game.coverUrl) {
+    igdbCoverUrl = game.coverUrl;
   }
-  
-  // Try legacy igdbCoverUrl field
-  if (game.igdbCoverUrl) {
-    return game.igdbCoverUrl;
-  }
-  
-  // Try coverUrl field (may be set by caller)
-  if (game.coverUrl) {
-    return game.coverUrl;
-  }
-  
-  return null;
+
+  return { localCoverUrl, igdbCoverUrl, noCoverSvg };
 }
 
 export const GameCard = {
@@ -37,12 +33,24 @@ export const GameCard = {
     if (!game) {
       return m('article.game-card', m('p', 'Game not found'));
     }
-    
-    // Use an SVG placeholder with a light gray background and "No Cover" text
-    const placeholderSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
-    
-    // Get cover URL using helper, with fallback to placeholder
-    const coverUrl = getGameCoverUrl(game) || placeholderSvg;
+
+    // Get all cover sources for cascading fallback
+    const coverSources = getGameCoverSources(game);
+    const { localCoverUrl, igdbCoverUrl } = coverSources;
+
+    // Determine initial cover URL and source
+    let initialCoverUrl;
+    let initialSource;
+    if (localCoverUrl) {
+      initialCoverUrl = localCoverUrl;
+      initialSource = 'local';
+    } else if (igdbCoverUrl) {
+      initialCoverUrl = igdbCoverUrl;
+      initialSource = 'igdb';
+    } else {
+      initialCoverUrl = noCoverSvg;
+      initialSource = 'placeholder';
+    }
     
     const renderStars = (rating) => {
       const stars = [];
@@ -74,25 +82,43 @@ export const GameCard = {
       return [];
     };
     
-    // Show local cover badge only if we have a local cover URL
-    const hasLocalCover = !!game.localCoverUrl;
-    
     return m('article.game-card', [
       m('div.game-cover', {
         class: collectionItem && onUpdateItem ? 'clickable' : '',
         onclick: collectionItem && onUpdateItem ? () => onUpdateItem(collectionItem) : null
       }, [
         m('img', {
-          src: coverUrl,
+          src: initialCoverUrl,
           alt: game.title || game.name,
           loading: 'lazy',
+          'data-cover-source': initialSource,
           onerror(event) {
-            // If a real image fails to load, fall back to the SVG placeholder
-            event.target.src = placeholderSvg;
+            const img = event.target;
+            const currentSource = img.dataset.coverSource;
+
+            if (currentSource === 'local' && igdbCoverUrl) {
+              // Local failed, try IGDB
+              img.dataset.coverSource = 'igdb';
+              img.src = igdbCoverUrl;
+            } else {
+              // IGDB failed or no IGDB available, use placeholder
+              img.dataset.coverSource = 'placeholder';
+              img.src = noCoverSvg;
+            }
+          },
+          onload(event) {
+            const img = event.target;
+            if (img.dataset.coverSource === 'local') {
+              // Local cover loaded successfully, show the badge
+              const badge = img.parentElement.querySelector('.local-cover-badge');
+              if (badge) {
+                badge.classList.remove('hidden');
+              }
+            }
           }
         }),
-        // Show indicator if using local cover
-        hasLocalCover && m('span.local-cover-badge', { title: 'Cached locally' }, '💾')
+        // Badge is hidden initially; shown by onload if local cover loads successfully
+        localCoverUrl && m('span.local-cover-badge.hidden', { title: 'Cached locally' }, '💾')
       ]),
       
       m('div.game-info', [
