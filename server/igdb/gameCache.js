@@ -4,6 +4,8 @@ import { Games } from '../../imports/lib/collections/games.js';
 import { getGameById, getGamesByIds, getCoverUrl, findGameByName } from './client.js';
 import { queueCoverDownload, CoverQueue, QueueStatus } from '../covers/coverQueue.js';
 import { GameCovers } from '../covers/coversCollection.js';
+import { isUsingB2, isB2Url, isLocalUrl } from '../covers/storageClient.js';
+import { checkB2FileExists, extractKeyFromB2Url } from '../covers/b2Storage.js';
 
 // Transform IGDB game data to our schema
 function transformIgdbGame(igdbGame) {
@@ -50,23 +52,40 @@ function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Check if a cover file is missing from disk
-async function isCoverFileMissing(localCoverId) {
-  let isMissing = true;
-
-  if (localCoverId) {
-    const coverDoc = await GameCovers.findOneAsync(localCoverId);
-    if (coverDoc) {
-      const version = coverDoc.versions?.original;
-      if (version?.path) {
-        const exists = fs.existsSync(version.path);
-        //console.log(`isCoverFileMissing: Checking path: ${version.path}, exists: ${exists}`);
-        isMissing = !exists;
-      }
-    }
+// Check if a cover file is missing from the ACTIVE storage backend
+async function isCoverFileMissing(localCoverId, localCoverUrl) {
+  // No cover reference at all - definitely missing
+  if (!localCoverId && !localCoverUrl) {
+    return true;
   }
 
-  return isMissing;
+  if (isUsingB2()) {
+    // B2 mode: check if URL is a B2 URL and verify it exists
+    if (localCoverUrl && isB2Url(localCoverUrl)) {
+      const key = extractKeyFromB2Url(localCoverUrl);
+      if (key) {
+        return !(await checkB2FileExists(key));
+      }
+    }
+    // Has local URL but we're in B2 mode - treat as missing
+    return true;
+  } else {
+    // Local mode: check filesystem
+    if (localCoverUrl && isLocalUrl(localCoverUrl)) {
+      // Check via FilesCollection document
+      if (localCoverId) {
+        const coverDoc = await GameCovers.findOneAsync(localCoverId);
+        if (coverDoc) {
+          const version = coverDoc.versions?.original;
+          if (version?.path) {
+            return !fs.existsSync(version.path);
+          }
+        }
+      }
+    }
+    // Has B2 URL but we're in local mode - treat as missing
+    return true;
+  }
 }
 
 // Get or fetch a game by IGDB ID
@@ -296,7 +315,7 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
     staleGames = await Games.find({
       updatedAt: { $lt: cutoffDate }
     }, {
-      fields: { _id: 1, igdbId: 1, coverImageId: 1, localCoverId: 1, igdbChecksum: 1 },
+      fields: { _id: 1, igdbId: 1, coverImageId: 1, localCoverId: 1, localCoverUrl: 1, igdbChecksum: 1 },
       limit: BATCH_SIZE
     }).fetchAsync();
 
@@ -344,13 +363,13 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
       }
     }
 
-    // Check for missing cover files on disk and requeue if needed
+    // Check for missing cover files and requeue if needed
     for (const game of staleGames) {
       if (game.coverImageId) {
-        const missing = await isCoverFileMissing(game.localCoverId);
+        const missing = await isCoverFileMissing(game.localCoverId, game.localCoverUrl);
         if (missing) {
           // Clear stale reference if it exists
-          if (game.localCoverId) {
+          if (game.localCoverId || game.localCoverUrl) {
             await Games.updateAsync(game._id, {
               $set: { localCoverId: null, localCoverUrl: null }
             });

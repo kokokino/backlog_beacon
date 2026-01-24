@@ -15,6 +15,7 @@ import './igdb/gameCache.js';
 
 // Import cover image handling
 import { startCoverProcessor } from './covers/index.js';
+import { initStorageClient } from './covers/storageClient.js';
 
 // Import additional methods
 import './methods/igdbMethods.js';
@@ -61,6 +62,9 @@ Meteor.startup(async () => {
   } else {
     console.warn('Warning: IGDB credentials not configured - game search will be limited to local cache');
   }
+
+  // Initialize storage client (local or B2)
+  initStorageClient();
   
   // Run migrations
   console.log('=== MIGRATIONS STARTUP ===');

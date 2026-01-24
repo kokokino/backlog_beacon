@@ -12,6 +12,8 @@ import {
 } from './coverQueue.js';
 import { Games } from '../../imports/lib/collections/games.js';
 import { getCoverUrl } from '../igdb/client.js';
+import { isUsingB2 } from './storageClient.js';
+import { uploadToB2 } from './b2Storage.js';
 
 // Processing state - instanceId ensures each server instance is identifiable
 let instanceId = null;
@@ -56,48 +58,54 @@ async function downloadIgdbCover(igdbImageId) {
 // Process a single queue item
 async function processQueueItem(item) {
   // console.log(`CoverProcessor: Processing game ${item.gameId}, image ${item.igdbImageId}`);
-  
+
   // Download from IGDB
   const imageBuffer = await downloadIgdbCover(item.igdbImageId);
   // console.log(`CoverProcessor: Downloaded ${imageBuffer.length} bytes`);
-  
+
   // Convert to WebP
   const webpBuffer = await convertToWebP(imageBuffer);
   // console.log(`CoverProcessor: Converted to WebP, ${webpBuffer.length} bytes`);
-  
-  // Use writeAsync to properly add file to FilesCollection
-  // This handles file storage, document creation, and URL generation
+
   const fileName = `${item.igdbImageId}.webp`;
-  
-  const fileObj = await GameCovers.writeAsync(webpBuffer, {
-    fileName: fileName,
-    type: 'image/webp',
-    meta: {
-      gameId: item.gameId,
-      igdbImageId: item.igdbImageId,
-      processedAt: new Date()
-    }
-  });
-  
-  // console.log(`CoverProcessor: Wrote file ${fileObj._id}`);
-  
-  // Use link() with '/' as URIBase to get a relative URL
-  // This ensures the URL works in both development and production
-  // Arguments: fileRef, version ('original' is default), URIBase
-  const coverUrl = GameCovers.link(fileObj, 'original', '/');
-  
+
+  let coverUrl;
+  let coverId = null;
+
+  if (isUsingB2()) {
+    // Upload directly to B2
+    // Use a directory structure based on gameId to distribute files
+    const key = `covers/${item.gameId.slice(0, 1)}/${item.gameId.slice(1, 2)}/${fileName}`;
+    coverUrl = await uploadToB2(webpBuffer, key, 'image/webp');
+    console.log(`CoverProcessor: Uploaded to B2: ${coverUrl}`);
+  } else {
+    // Store locally via FilesCollection
+    const fileObj = await GameCovers.writeAsync(webpBuffer, {
+      fileName: fileName,
+      type: 'image/webp',
+      meta: {
+        gameId: item.gameId,
+        igdbImageId: item.igdbImageId,
+        processedAt: new Date()
+      }
+    });
+
+    coverId = fileObj._id;
+    // Use link() with '/' as URIBase to get a relative URL
+    coverUrl = GameCovers.link(fileObj, 'original', '/');
+    console.log(`CoverProcessor: Completed game ${item.gameId}, file ${fileObj._id}, url ${coverUrl}`);
+  }
+
   // Update game document with local cover info
   await Games.updateAsync(item.gameId, {
     $set: {
-      localCoverId: fileObj._id,
+      localCoverId: coverId,  // null for B2
       localCoverUrl: coverUrl,
       localCoverUpdatedAt: new Date()
     }
   });
-  
-  console.log(`CoverProcessor: Completed game ${item.gameId}, file ${fileObj._id}, url ${coverUrl}`);
-  
-  return fileObj._id;
+
+  return coverId;
 }
 
 // Main processing loop - uses atomic claiming to prevent race conditions

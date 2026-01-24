@@ -9,9 +9,11 @@
     "visualize": "meteor --production --extra-packages bundle-visualizer"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.974.0",
     "@babel/runtime": "^7.23.5",
     "@picocss/pico": "^2.1.1",
     "@swc/helpers": "^0.5.17",
+    "jquery": "^3.7.1",
     "jsonwebtoken": "^9.0.3",
     "meteor-node-stubs": "^1.2.12",
     "mithril": "^2.3.8",
