@@ -258,6 +258,7 @@ const CollectionContent = {
   async handleRemoveItem(itemId) {
     try {
       await Meteor.callAsync('collection.removeItem', itemId);
+      this.setupSubscriptions();
       this.fetchTotalCount();
     } catch (err) {
       alert(err.reason || err.message || 'Failed to remove item');
