@@ -192,10 +192,12 @@ function normalizeForComparison(name) {
   // Replace slash with "and" (but not in fractions which are already handled)
   result = result.replace(/\//g, ' and ');
 
-  // Normalize roman numerals with dashes (I-II-III -> 1 2 3 style doesn't help, keep as is)
-
-  // Remove punctuation except spaces
+  // Remove punctuation except spaces and numbers
   result = result.replace(/[^a-z0-9\s]/g, ' ');
+
+  // Collapse spaces between numbers and letters (e.g., "8 doors" -> "8doors")
+  result = result.replace(/(\d)\s+([a-z])/g, '$1$2');
+  result = result.replace(/([a-z])\s+(\d)/g, '$1$2');
 
   // Collapse multiple spaces
   result = result.replace(/\s+/g, ' ').trim();
@@ -293,7 +295,16 @@ function getSearchPatterns(name) {
     }
   }
 
-  // Pattern 6: Normalized wildcard (1/2 -> half, / -> and)
+  // Pattern 6: Collapse spaces between numbers and words (e.g., "8 Doors" -> "8Doors")
+  const collapsed = name.replace(/(\d)\s+([a-zA-Z])/g, '$1$2').replace(/([a-zA-Z])\s+(\d)/g, '$1$2');
+  if (collapsed !== name) {
+    const collapsedEscaped = collapsed.replace(/"/g, '\\"');
+    if (!patterns.some(p => p.value === collapsedEscaped)) {
+      patterns.push({ type: 'search', value: collapsedEscaped });
+    }
+  }
+
+  // Pattern 7: Normalized wildcard (1/2 -> half, / -> and)
   const normalized = normalizeForComparison(name);
   const normWords = normalized.split(' ').filter(w => w.length >= 2);
   if (normWords.length >= 2) {
