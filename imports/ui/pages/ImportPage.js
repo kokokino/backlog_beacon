@@ -458,7 +458,11 @@ const ImportContent = {
               m('ul', [
                 this.darkadiaResult.games
                   .filter(g => g.action === 'updated')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),

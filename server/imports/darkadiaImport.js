@@ -263,13 +263,13 @@ async function importRow(userId, row, options = {}) {
         createdAt: existing.createdAt // Preserve original creation date
       }
     });
-    return { success: true, action: 'updated', itemId: existing._id, gameName };
+    return { success: true, action: 'updated', itemId: existing._id, gameName, matchedName: game?.name || null };
   }
   
   // Insert new item
   const itemId = await CollectionItems.insertAsync(collectionItem);
   
-  return { success: true, action: 'inserted', itemId, gameName, gameId };
+  return { success: true, action: 'inserted', itemId, gameName, gameId, matchedName: game?.name || null };
 }
 
 // Main import function
@@ -331,6 +331,7 @@ export async function importDarkadiaCSV(userId, csvContent, options = {}) {
           }
           results.games.push({
             name: result.gameName,
+            matchedName: result.matchedName,
             itemId: result.itemId,
             gameId: result.gameId,
             action: result.action
