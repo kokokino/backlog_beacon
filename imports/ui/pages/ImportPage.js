@@ -440,19 +440,25 @@ const ImportContent = {
         this.darkadiaError
       ]),
       
-      this.darkadiaResult && m('div.success-message', { role: 'alert' }, [
-        m('strong', 'Import Complete!'),
-        m('p', [
-          `Imported: ${this.darkadiaResult.imported} games`,
-          this.darkadiaResult.updated > 0 ? `, Updated: ${this.darkadiaResult.updated}` : '',
-          `, Skipped: ${this.darkadiaResult.skipped}`
+      this.darkadiaResult && m('div.import-results', [
+        m('div.import-results-summary', {
+          class: this.darkadiaResult.errors.length > 0 ? 'has-errors' : ''
+        }, [
+          m('strong', 'Import Complete!'),
+          m('p', [
+            `Imported: ${this.darkadiaResult.imported} games`,
+            this.darkadiaResult.updated > 0 ? `, Updated: ${this.darkadiaResult.updated}` : '',
+            `, Skipped: ${this.darkadiaResult.skipped}`
+          ])
         ]),
-        this.darkadiaResult.errors.length > 0 && m('details', [
-          m('summary', `${this.darkadiaResult.errors.length} errors`),
-          m('ul', [
-            this.darkadiaResult.errors.map((error, index) => 
-              m('li', { key: index }, `Row ${error.row}: ${error.name} - ${error.error}`)
-            )
+        this.darkadiaResult.errors.length > 0 && m('div.import-errors', [
+          m('details', { open: true }, [
+            m('summary', `${this.darkadiaResult.errors.length} errors`),
+            m('ul', [
+              this.darkadiaResult.errors.map((error, index) =>
+                m('li', { key: index }, `Row ${error.row}: ${error.name} - ${error.error}`)
+              )
+            ])
           ])
         ])
       ]),

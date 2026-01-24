@@ -1055,6 +1055,47 @@ dialog article footer button {
   padding: 0;
 }
 
+.import-results {
+  margin: 1rem 0;
+}
+
+.import-results-summary {
+  background: var(--pico-ins-color);
+  color: white;
+  padding: 1rem;
+  border-radius: var(--pico-border-radius);
+}
+
+.import-results-summary.has-errors,
+.import-results-summary.has-errors p {
+  background: var(--pico-primary-background);
+  color: white;
+}
+
+.import-results-summary p {
+  margin: 0.5rem 0;
+}
+
+.import-errors {
+  background: color-mix(in srgb, var(--pico-del-color) 15%, transparent);
+  border: 1px solid var(--pico-del-color);
+  color: var(--pico-color);
+  padding: 1rem;
+  border-radius: var(--pico-border-radius);
+  margin-top: 0.5rem;
+}
+
+.import-errors summary {
+  color: var(--pico-del-color);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.import-errors ul {
+  margin: 0.5rem 0 0 1rem;
+  padding: 0;
+}
+
 .input-mode-toggle {
   display: flex;
   gap: 0.5rem;
