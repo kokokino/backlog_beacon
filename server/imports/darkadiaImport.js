@@ -4,65 +4,75 @@ import { ImportProgress } from '../../imports/lib/collections/importProgress.js'
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 
-// Parse CSV content into rows
+// Parse CSV content into rows, handling multi-line quoted fields (RFC 4180 compliant)
 function parseCSV(csvContent) {
-  const lines = csvContent.split('\n');
-  if (lines.length === 0) {
-    return [];
-  }
-  
-  const headers = parseCSVLine(lines[0]);
   const rows = [];
-  
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line.length === 0) {
-      continue;
-    }
-    
-    const values = parseCSVLine(line);
-    const row = {};
-    
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = values[j] || '';
-    }
-    
-    rows.push(row);
-  }
-  
-  return rows;
-}
-
-// Parse a single CSV line handling quoted fields
-function parseCSVLine(line) {
-  const values = [];
-  let current = '';
+  let currentRow = [];
+  let currentField = '';
   let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-    
+
+  for (let i = 0; i < csvContent.length; i++) {
+    const char = csvContent[i];
+    const nextChar = csvContent[i + 1];
+
     if (char === '"') {
       if (inQuotes && nextChar === '"') {
-        // Escaped quote
-        current += '"';
+        // Escaped quote - add single quote and skip next
+        currentField += '"';
         i++;
       } else {
         // Toggle quote mode
         inQuotes = !inQuotes;
       }
     } else if (char === ',' && !inQuotes) {
-      values.push(current.trim());
-      current = '';
+      // Field delimiter
+      currentRow.push(currentField.trim());
+      currentField = '';
+    } else if (char === '\r' && nextChar === '\n' && !inQuotes) {
+      // Windows line ending - row delimiter (only when not in quotes)
+      i++; // Skip \n
+      currentRow.push(currentField.trim());
+      if (currentRow.some(field => field !== '')) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentField = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      // Unix line ending or standalone \r - row delimiter (only when not in quotes)
+      currentRow.push(currentField.trim());
+      if (currentRow.some(field => field !== '')) {
+        rows.push(currentRow);
+      }
+      currentRow = [];
+      currentField = '';
     } else {
-      current += char;
+      currentField += char;
     }
   }
-  
-  values.push(current.trim());
-  
-  return values;
+
+  // Handle last field/row
+  currentRow.push(currentField.trim());
+  if (currentRow.some(field => field !== '')) {
+    rows.push(currentRow);
+  }
+
+  // Convert to objects using first row as headers
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const headers = rows[0];
+  const result = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = rows[i][j] || '';
+    }
+    result.push(row);
+  }
+
+  return result;
 }
 
 // Map Darkadia status to our status
@@ -217,10 +227,9 @@ async function importRow(userId, row, options = {}) {
   const notes = notesParts.join('\n\n');
   
   // Create collection item
+  // Note: Only include gameId/igdbId if they have values, so sparse unique index works
   const collectionItem = {
     userId,
-    gameId: gameId || null,
-    igdbId: igdbId || null,
     gameName: gameName,
     platform: primaryPlatform || '',
     platforms: platforms,
@@ -237,6 +246,14 @@ async function importRow(userId, row, options = {}) {
     createdAt: new Date(),
     updatedAt: new Date()
   };
+
+  // Only set gameId/igdbId if found - omitting allows sparse index to work
+  if (gameId) {
+    collectionItem.gameId = gameId;
+  }
+  if (igdbId) {
+    collectionItem.igdbId = igdbId;
+  }
   
   if (existing && options.updateExisting === true) {
     // Update existing item
