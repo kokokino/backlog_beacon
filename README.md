@@ -1,6 +1,6 @@
 # Backlog Beacon
 
-A video game collection management app for the Kokokino ecosystem. Track your games, import from Darkadia, and browse your collection on a beautiful 3D bookshelf.
+A video game collection management app for the [Kokokino](https://www.kokokino.com/) ecosystem. Track your games, import from Darkadia, and browse your collection on a beautiful 3D bookshelf.
 
 ## Overview
 
@@ -305,6 +305,7 @@ We welcome contributions! Please see our [Contributing Guidelines](documentation
 
 ## Related Resources
 
+- [Kokokino](https://www.kokokino.com/) – The hub for all the games/apps you play/create
 - [Kokokino Hub](https://github.com/kokokino/hub) – Central authentication and billing app
 - [Hub & Spoke Strategy](documentation/HUB_SPOKE_STRATEGY.md) – Architecture documentation
 - [Conventions](documentation/CONVENTIONS.md) – Coding advice
