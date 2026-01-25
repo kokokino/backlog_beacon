@@ -7,11 +7,9 @@ node_modules/
 settings.json
 settings.development.json
 settings.production.json
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+settings.prodlocal.json
+.env*
+run-prodlocal.sh
 
 # Build artifacts
 build/
