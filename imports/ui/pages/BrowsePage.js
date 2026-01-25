@@ -25,8 +25,9 @@ const BrowseContent = {
     this.subscription = null;
     this.collectionSub = null;
     this.computation = null;
-    this.searchTimeout = null;
-    this.igdbTimeout = null;
+    this.searchDebounceTimer = null;
+    this.searchFeedbackTimer = null;
+    this.isSearchPending = false;
     this.currentPage = 1;
     this.totalCount = 0;
 
@@ -48,11 +49,11 @@ const BrowseContent = {
     if (this.computation) {
       this.computation.stop();
     }
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
     }
-    if (this.igdbTimeout) {
-      clearTimeout(this.igdbTimeout);
+    if (this.searchFeedbackTimer) {
+      clearTimeout(this.searchFeedbackTimer);
     }
   },
   
@@ -134,45 +135,104 @@ const BrowseContent = {
     });
   },
   
-  handleSearch(query) {
-    this.searchQuery = query;
-    this.currentPage = 1;
-    this.igdbSearched = false;
-    this.igdbGames = [];
-    this.igdbError = null;
+  handleSearchInput(query) {
+    // Clear all pending timers
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
+    if (this.searchFeedbackTimer) {
+      clearTimeout(this.searchFeedbackTimer);
+      this.searchFeedbackTimer = null;
+    }
+    this.isSearchPending = false;
 
-    if (this.igdbTimeout) {
-      clearTimeout(this.igdbTimeout);
-      this.igdbTimeout = null;
+    const trimmed = query.trim();
+
+    // Check if we had an active search before (3+ chars)
+    const hadActiveSearch = this.searchQuery.length >= 3;
+
+    if (trimmed.length === 0) {
+      // Empty - only refresh if we had an active search
+      if (hadActiveSearch) {
+        this.searchQuery = '';
+        this.igdbGames = [];
+        this.igdbSearched = false;
+        this.setupSubscriptions();
+        this.fetchTotalCount();
+      }
+      return;
     }
 
-    this.setupSubscriptions();
-    this.fetchTotalCount();
-
-    if (query.trim().length >= 3 && this.igdbConfigured) {
-      this.igdbTimeout = setTimeout(() => {
-        this.searchIgdb(query);
-      }, 500);
+    if (trimmed.length < 3) {
+      // 1-2 chars - only refresh if clearing an active search
+      if (hadActiveSearch) {
+        this.searchQuery = '';
+        this.igdbGames = [];
+        this.igdbSearched = false;
+        this.setupSubscriptions();
+        this.fetchTotalCount();
+      }
+      return;
     }
+
+    // 3+ chars - double-layered debounce
+    this.searchFeedbackTimer = setTimeout(() => {
+      this.isSearchPending = true;
+      m.redraw();
+    }, 200);
+
+    this.searchDebounceTimer = setTimeout(() => {
+      this.isSearchPending = false;
+      this.searchQuery = trimmed;
+      this.currentPage = 1;
+      this.igdbGames = [];
+      this.igdbSearched = false;
+      this.igdbError = null;
+
+      this.setupSubscriptions();
+      this.fetchTotalCount();
+
+      if (this.igdbConfigured) {
+        this.searchIgdb(trimmed);
+      }
+      m.redraw();
+    }, 800);
   },
   
   async searchIgdb(query) {
-    if (query.trim().length < 3) {
+    const searchingFor = query.trim();
+    if (searchingFor.length < 3) {
       return;
     }
-    
+
     this.igdbLoading = true;
     this.igdbError = null;
     m.redraw();
-    
+
     try {
       const results = await Meteor.callAsync('igdb.searchAndCache', query);
-      
+
+      // RACE CONDITION FIX: discard if query changed while waiting
+      if (this.searchQuery !== searchingFor) {
+        return;
+      }
+
       const localIgdbIds = new Set(this.localGames.map(g => g.igdbId).filter(Boolean));
-      
+
       this.igdbGames = results.filter(game => !localIgdbIds.has(game.igdbId));
       this.igdbSearched = true;
+
+      // Re-fetch count since IGDB caching may have added new games to local DB
+      if (results.length > 0) {
+        this.fetchTotalCount();
+      }
     } catch (error) {
+      // RACE CONDITION FIX: discard if query changed while waiting
+      if (this.searchQuery !== searchingFor) {
+        return;
+      }
+
       console.error('IGDB search failed:', error);
       if (error.error === 'igdb-not-configured') {
         this.igdbConfigured = false;
@@ -183,7 +243,7 @@ const BrowseContent = {
       this.igdbGames = [];
       this.igdbSearched = true;
     }
-    
+
     this.igdbLoading = false;
     m.redraw();
   },
@@ -205,44 +265,41 @@ const BrowseContent = {
       
       m('div.search-bar', [
         m('input[type=search]', {
-          placeholder: this.igdbConfigured 
-            ? 'Search games (type at least 3 characters to search IGDB)...'
-            : 'Search games...',
+          placeholder: this.igdbConfigured
+            ? 'Search games (type at least 3 characters to search)...'
+            : 'Search games (type at least 3 characters)...',
           value: this.inputValue,
           oninput: (event) => {
             this.inputValue = event.target.value;
-            
-            if (this.searchTimeout) {
-              clearTimeout(this.searchTimeout);
-            }
-            
-            const query = this.inputValue;
-            this.searchTimeout = setTimeout(() => {
-              this.handleSearch(query);
-            }, 150);
+            this.handleSearchInput(this.inputValue);
           }
         })
       ]),
       
-      m('section.local-results', [
+      // Searching indicator
+      this.isSearchPending && m('div.search-pending', [
+        m('p', 'Searching...')
+      ]),
+
+      !this.isSearchPending && m('section.local-results', [
         m('h3.section-title', [
           '📚 ',
           isEmptySearch ? 'Games in Database' : 'Local Results',
           !this.localLoading && m('span.result-count', ` (${this.totalCount.toLocaleString()} total)`)
         ]),
-        
+
         this.localLoading && m('div.loading-container', [
           m('div.loading'),
           m('p', 'Searching local database...')
         ]),
-        
+
         !this.localLoading && !hasLocalResults && m('div.empty-state', [
           m('h3', 'No local games found'),
           isEmptySearch
             ? m('p', 'The local game database is empty. Search for games to add them from IGDB.')
             : m('p', 'No matches in local database.')
         ]),
-        
+
         !this.localLoading && hasLocalResults && m('div.games-grid',
           this.localGames.map(game => {
             const inCollection = this.collectionGameIds.has(game._id);
@@ -272,7 +329,7 @@ const BrowseContent = {
         ])
       ]),
 
-      showIgdbSection && m('section.igdb-results', [
+      !this.isSearchPending && showIgdbSection && m('section.igdb-results', [
         m('h3.section-title', [
           '🌐 Results from IGDB',
           !this.igdbLoading && this.igdbSearched && m('span.result-count', ` (${this.igdbGames.length})`),
@@ -316,10 +373,10 @@ const BrowseContent = {
         )
       ]),
       
-      !showIgdbSection && this.searchQuery.trim().length > 0 && this.searchQuery.trim().length < 3 && this.igdbConfigured &&
-        m('p.search-hint', 'Type at least 3 characters to also search IGDB.'),
+      !this.isSearchPending && this.inputValue.trim().length > 0 && this.inputValue.trim().length < 3 &&
+        m('p.search-hint', 'Type at least 3 characters to search.'),
       
-      !this.igdbConfigured && this.searchQuery.trim().length >= 3 && m('p.search-hint', [
+      !this.isSearchPending && !this.igdbConfigured && this.searchQuery.trim().length >= 3 && m('p.search-hint', [
         'IGDB integration is not configured. Only local results are shown.'
       ]),
       

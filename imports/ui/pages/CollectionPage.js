@@ -30,6 +30,8 @@ const CollectionContent = {
     this.platformsSubscription = null;
     this.computation = null;
     this.searchDebounceTimer = null;
+    this.searchFeedbackTimer = null;
+    this.isSearchPending = false;
   },
 
   oncreate(vnode) {
@@ -50,6 +52,9 @@ const CollectionContent = {
     }
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
+    }
+    if (this.searchFeedbackTimer) {
+      clearTimeout(this.searchFeedbackTimer);
     }
   },
 
@@ -84,7 +89,7 @@ const CollectionContent = {
     if (this.filters.favorite) {
       countFilters.favorite = true;
     }
-    if (this.filters.search && this.filters.search.trim()) {
+    if (this.filters.search && this.filters.search.trim().length >= 3) {
       countFilters.search = this.filters.search.trim();
     }
 
@@ -129,7 +134,7 @@ const CollectionContent = {
     if (this.filters.favorite) {
       options.favorite = true;
     }
-    if (this.filters.search && this.filters.search.trim()) {
+    if (this.filters.search && this.filters.search.trim().length >= 3) {
       options.search = this.filters.search.trim();
     }
 
@@ -201,30 +206,61 @@ const CollectionContent = {
     const filtersChanged = newFilters.status !== this.filters.status ||
                           newFilters.platform !== this.filters.platform ||
                           newFilters.favorite !== this.filters.favorite;
+
+    // Check if we had an active search before (3+ chars) - must do this before updating filters
+    const previousSearch = (this.filters.search || '').trim();
+    const hadActiveSearch = previousSearch.length >= 3;
+
     this.filters = newFilters;
+
+    // Clear all pending timers on every change
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
+    if (this.searchFeedbackTimer) {
+      clearTimeout(this.searchFeedbackTimer);
+      this.searchFeedbackTimer = null;
+    }
+    this.isSearchPending = false;
 
     // Reset to page 1 when filters change (except sort)
     if (searchChanged || filtersChanged) {
       this.currentPage = 1;
     }
 
-    // Debounce search to avoid excessive subscriptions while typing
-    if (searchChanged && newFilters.search) {
-      if (this.searchDebounceTimer) {
-        clearTimeout(this.searchDebounceTimer);
+    const trimmedSearch = (newFilters.search || '').trim();
+
+    if (searchChanged) {
+      if (trimmedSearch.length === 0) {
+        // Search cleared - only refresh if we had an active search
+        if (hadActiveSearch) {
+          this.setupSubscriptions();
+          this.fetchTotalCount();
+        }
+      } else if (trimmedSearch.length < 3) {
+        // 1-2 chars - only refresh if clearing an active search
+        if (hadActiveSearch) {
+          this.setupSubscriptions();
+          this.fetchTotalCount();
+        }
+      } else {
+        // 3+ chars - double-layered debounce
+        this.searchFeedbackTimer = setTimeout(() => {
+          this.isSearchPending = true;
+          m.redraw();
+        }, 200);
+
+        this.searchDebounceTimer = setTimeout(() => {
+          this.isSearchPending = false;
+          this.setupSubscriptions();
+          this.fetchTotalCount();
+        }, 800);
       }
-      this.searchDebounceTimer = setTimeout(() => {
-        this.setupSubscriptions();
-        this.fetchTotalCount();
-      }, 300);
     } else {
-      // Non-search filters apply immediately
-      if (this.searchDebounceTimer) {
-        clearTimeout(this.searchDebounceTimer);
-      }
+      // Non-search filter changes - apply immediately (include search only if 3+ chars)
       this.setupSubscriptions();
-      // Fetch new count when filters change
-      if (filtersChanged || searchChanged) {
+      if (filtersChanged) {
         this.fetchTotalCount();
       }
     }
@@ -233,7 +269,13 @@ const CollectionContent = {
   handleClearFilters() {
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
     }
+    if (this.searchFeedbackTimer) {
+      clearTimeout(this.searchFeedbackTimer);
+      this.searchFeedbackTimer = null;
+    }
+    this.isSearchPending = false;
     this.filters = {
       status: null,
       platform: null,
@@ -266,11 +308,13 @@ const CollectionContent = {
   },
 
   view(vnode) {
+    const trimmedSearch = (this.filters.search || '').trim();
     const hasActiveFilters = this.filters.status || this.filters.platform ||
-                             this.filters.favorite || this.filters.search;
+                             this.filters.favorite || trimmedSearch.length >= 3;
     const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
     const startIndex = this.totalCount > 0 ? ((this.currentPage - 1) * PAGE_SIZE) + 1 : 0;
     const endIndex = Math.min(this.currentPage * PAGE_SIZE, this.totalCount);
+    const showSearchHint = trimmedSearch.length > 0 && trimmedSearch.length < 3;
 
     return m('div.collection-page', [
       m('header.page-header', [
@@ -285,28 +329,36 @@ const CollectionContent = {
         onClearFilters: () => this.handleClearFilters()
       }),
 
-      this.loading && m('div.loading-container', [
+      // Hint when search is 1-2 characters
+      showSearchHint && m('p.search-hint', 'Type at least 3 characters to search.'),
+
+      // Searching indicator
+      this.isSearchPending && m('div.search-pending', [
+        m('p', 'Searching...')
+      ]),
+
+      !this.isSearchPending && this.loading && m('div.loading-container', [
         m('div.loading'),
         m('p', 'Loading your collection...')
       ]),
 
       // No results due to filters
-      !this.loading && this.items.length === 0 && hasActiveFilters && m('div.empty-state', [
+      !this.isSearchPending && !this.loading && this.items.length === 0 && hasActiveFilters && m('div.empty-state', [
         m('h3', 'No games match your filters'),
         m('p', 'Try adjusting your search or filter criteria.'),
-        m('button', { onclick: () => this.handleClearFilters() }, 'Clear Filters'), 
+        m('button', { onclick: () => this.handleClearFilters() }, 'Clear Filters'),
         m('p', 'Or browse games to add them to your collection.'),
         m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')
       ]),
 
       // Truly empty collection
-      !this.loading && this.items.length === 0 && !hasActiveFilters && m('div.empty-state', [
+      !this.isSearchPending && !this.loading && this.items.length === 0 && !hasActiveFilters && m('div.empty-state', [
         m('h3', 'No games in your collection'),
         m('p', 'Start by browsing games and adding them to your collection.'),
         m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')
       ]),
 
-      !this.loading && this.items.length > 0 && m('div.collection-grid',
+      !this.isSearchPending && !this.loading && this.items.length > 0 && m('div.collection-grid',
         this.items.map(item =>
           m(GameCard, {
             key: item._id,
@@ -318,7 +370,7 @@ const CollectionContent = {
         )
       ),
 
-      !this.loading && this.totalCount > 0 && m('div.pagination-row', [
+      !this.isSearchPending && !this.loading && this.totalCount > 0 && m('div.pagination-row', [
         m('span.results-info', `Showing ${startIndex}-${endIndex} of ${this.totalCount.toLocaleString()} games`),
         this.totalCount > PAGE_SIZE && m('div.pagination-buttons', [
           m('button.outline.small', {

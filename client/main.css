@@ -529,6 +529,25 @@ dialog article footer button {
   margin-top: 1rem;
 }
 
+.search-pending {
+  text-align: center;
+  padding: 1rem;
+  color: var(--pico-muted-color);
+}
+
+.search-pending p::before {
+  content: '';
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.5rem;
+  border: 2px solid var(--pico-muted-border-color);
+  border-top-color: var(--pico-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  vertical-align: middle;
+}
+
 .button-group {
   display: flex;
   gap: 1rem;
