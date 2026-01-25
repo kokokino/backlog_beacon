@@ -5,10 +5,14 @@ import { RequireAuth } from '../components/RequireAuth.js';
 import { GameCard } from '../components/GameCard.js';
 import { EditItemModal } from '../components/EditItemModal.js';
 import { CollectionFilters } from '../components/CollectionFilters.js';
+import { ViewModeSelector, VIEW_MODES } from '../components/ViewModeSelector.js';
+import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
 const PAGE_SIZE = 24;
+const INFINITE_CHUNK_SIZE = 100;
+const PREFETCH_THRESHOLD = 20;
 
 const CollectionContent = {
   oninit(vnode) {
@@ -25,6 +29,7 @@ const CollectionContent = {
     this.currentPage = 1;
     this.totalCount = 0;
     this.loading = true;
+    this.loadingMore = false;
     this.editingItem = null;
     this.subscription = null;
     this.platformsSubscription = null;
@@ -32,6 +37,8 @@ const CollectionContent = {
     this.searchDebounceTimer = null;
     this.searchFeedbackTimer = null;
     this.isSearchPending = false;
+    this.viewMode = VIEW_MODES.PAGES;
+    this.loadedCount = 0;  // Track how many items are loaded in infinite mode
   },
 
   oncreate(vnode) {
@@ -119,7 +126,15 @@ const CollectionContent = {
     const sortField = currentSort.startsWith('date') ? 'dateAdded' : 'gameName';
     const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
 
-    // Build options with all filters including search, sort, and pagination
+    const isInfiniteMode = this.viewMode === VIEW_MODES.INFINITE;
+
+    // INFINITE MODE: Use method calls only (no subscription reactivity issues)
+    if (isInfiniteMode) {
+      this.loadInitialInfiniteData();
+      return;
+    }
+
+    // PAGES MODE: Use subscriptions for reactive updates
     const options = {
       sort: currentSort,
       limit: PAGE_SIZE,
@@ -138,20 +153,16 @@ const CollectionContent = {
       options.search = this.filters.search.trim();
     }
 
-    // Use unified publication that returns both items AND their games
     this.subscription = Meteor.subscribe('userCollectionWithGames', options);
 
     this.computation = Tracker.autorun(() => {
       const ready = this.subscription.ready();
 
       if (ready) {
-        // Query items that have gameName field - this filters out partial docs
-        // from collectionPlatforms subscription which only has platforms field
         let items = CollectionItems.find(
           { gameName: { $exists: true } }
         ).fetch();
 
-        // Build games lookup first (needed for name sorting)
         const gameIds = items.map(item => item.gameId).filter(Boolean);
         const games = Games.find({ _id: { $in: gameIds } }).fetch();
         this.games = {};
@@ -161,7 +172,6 @@ const CollectionContent = {
 
         // Sort client-side
         if (sortField === 'gameName') {
-          // Sort by game.title first, then game.name (case-insensitive)
           items.sort((a, b) => {
             const gameA = this.games[a.gameId] || {};
             const gameB = this.games[b.gameId] || {};
@@ -173,7 +183,6 @@ const CollectionContent = {
             if (titleA > titleB) {
               return sortDirection === 1 ? 1 : -1;
             }
-            // Secondary sort by name if titles are equal
             const nameA = (gameA.name || '').toLowerCase();
             const nameB = (gameB.name || '').toLowerCase();
             if (nameA < nameB) {
@@ -185,7 +194,6 @@ const CollectionContent = {
             return 0;
           });
         } else {
-          // Date sort - use regular comparison
           items.sort((a, b) => {
             const valA = a[sortField] || 0;
             const valB = b[sortField] || 0;
@@ -194,11 +202,52 @@ const CollectionContent = {
         }
 
         this.items = items;
-
+        this.loadedCount = items.length;
         this.loading = false;
         m.redraw();
       }
     });
+  },
+
+  async loadInitialInfiniteData() {
+    const options = this.buildFilterOptions();
+    options.limit = INFINITE_CHUNK_SIZE;
+    options.skip = 0;
+
+    try {
+      const result = await Meteor.callAsync('collection.getItemsChunk', options);
+      this.items = result.items || [];
+      this.games = {};
+      (result.games || []).forEach(game => {
+        this.games[game._id] = game;
+      });
+      this.loadedCount = this.items.length;
+      this.loading = false;
+      m.redraw();
+    } catch (error) {
+      console.error('Failed to load initial data:', error);
+      this.loading = false;
+      m.redraw();
+    }
+  },
+
+  buildFilterOptions() {
+    const options = {
+      sort: this.filters.sort || 'name-asc'
+    };
+    if (this.filters.status) {
+      options.status = this.filters.status;
+    }
+    if (this.filters.platform) {
+      options.platform = this.filters.platform;
+    }
+    if (this.filters.favorite) {
+      options.favorite = true;
+    }
+    if (this.filters.search && this.filters.search.trim().length >= 3) {
+      options.search = this.filters.search.trim();
+    }
+    return options;
   },
 
   handleFilterChange(newFilters) {
@@ -227,6 +276,11 @@ const CollectionContent = {
     // Reset to page 1 when filters change (except sort)
     if (searchChanged || filtersChanged) {
       this.currentPage = 1;
+      this.loadedCount = 0;
+      // Scroll to top when filters change in infinite mode
+      if (this.viewMode === VIEW_MODES.INFINITE) {
+        window.scrollTo(0, 0);
+      }
     }
 
     const trimmedSearch = (newFilters.search || '').trim();
@@ -284,6 +338,11 @@ const CollectionContent = {
       sort: 'name-asc'
     };
     this.currentPage = 1;
+    this.loadedCount = 0;
+    // Scroll to top when filters are cleared (especially useful in infinite mode)
+    if (this.viewMode === VIEW_MODES.INFINITE) {
+      window.scrollTo(0, 0);
+    }
     this.setupSubscriptions();
     this.fetchTotalCount();
   },
@@ -295,6 +354,71 @@ const CollectionContent = {
     }
     this.currentPage = page;
     this.setupSubscriptions();
+  },
+
+  handleModeChange(newMode) {
+    if (newMode === this.viewMode) {
+      return;
+    }
+    this.viewMode = newMode;
+    this.items = [];
+    this.loadedCount = 0;
+    this.currentPage = 1;
+    // Scroll to top when switching modes
+    window.scrollTo(0, 0);
+    this.setupSubscriptions();
+  },
+
+  handleVisibleRangeChange(startIdx, endIdx, loadedCount) {
+    // Prefetch forward when approaching the edge of loaded data
+    const actualLoaded = loadedCount || this.items.length;
+    const shouldLoad = endIdx >= actualLoaded - PREFETCH_THRESHOLD && actualLoaded < this.totalCount && !this.loadingMore;
+
+    console.log('[CollectionPage] handleVisibleRangeChange:', {
+      startIdx, endIdx, actualLoaded,
+      totalCount: this.totalCount,
+      threshold: actualLoaded - PREFETCH_THRESHOLD,
+      loadingMore: this.loadingMore,
+      shouldLoad
+    });
+
+    if (shouldLoad) {
+      console.log('[CollectionPage] Triggering loadMoreItems from index:', actualLoaded);
+      this.loadMoreItems(actualLoaded);
+    }
+  },
+
+  async loadMoreItems(fromIndex) {
+    if (this.loadingMore || fromIndex >= this.totalCount) {
+      return;
+    }
+
+    this.loadingMore = true;
+    m.redraw();
+
+    const options = this.buildFilterOptions();
+    options.limit = INFINITE_CHUNK_SIZE;
+    options.skip = fromIndex;
+
+    try {
+      const result = await Meteor.callAsync('collection.getItemsChunk', options);
+      const newItems = result.items || [];
+      const newGames = result.games || [];
+
+      // Merge games into lookup
+      newGames.forEach(game => {
+        this.games[game._id] = game;
+      });
+
+      // Append items
+      this.items = [...this.items, ...newItems];
+      this.loadedCount = this.items.length;
+    } catch (error) {
+      console.error('Failed to load more items:', error);
+    }
+
+    this.loadingMore = false;
+    m.redraw();
   },
 
   async handleRemoveItem(itemId) {
@@ -329,6 +453,12 @@ const CollectionContent = {
         onClearFilters: () => this.handleClearFilters()
       }),
 
+      // View mode selector (only show if there are items or filters applied)
+      (this.totalCount > 0 || hasActiveFilters) && m(ViewModeSelector, {
+        currentMode: this.viewMode,
+        onModeChange: (mode) => this.handleModeChange(mode)
+      }),
+
       // Hint when search is 1-2 characters
       showSearchHint && m('p.search-hint', 'Type at least 3 characters to search.'),
 
@@ -358,7 +488,8 @@ const CollectionContent = {
         m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')
       ]),
 
-      !this.isSearchPending && !this.loading && this.items.length > 0 && m('div.collection-grid',
+      // Pages mode: traditional grid with pagination
+      !this.isSearchPending && !this.loading && this.items.length > 0 && this.viewMode === VIEW_MODES.PAGES && m('div.collection-grid',
         this.items.map(item =>
           m(GameCard, {
             key: item._id,
@@ -370,7 +501,7 @@ const CollectionContent = {
         )
       ),
 
-      !this.isSearchPending && !this.loading && this.totalCount > 0 && m('div.pagination-row', [
+      !this.isSearchPending && !this.loading && this.totalCount > 0 && this.viewMode === VIEW_MODES.PAGES && m('div.pagination-row', [
         m('span.results-info', `Showing ${startIndex}-${endIndex} of ${this.totalCount.toLocaleString()} games`),
         this.totalCount > PAGE_SIZE && m('div.pagination-buttons', [
           m('button.outline.small', {
@@ -384,6 +515,17 @@ const CollectionContent = {
           }, 'Next')
         ])
       ]),
+
+      // Infinite mode: virtual scroll grid
+      !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.INFINITE && this.totalCount > 0 && m(VirtualScrollGrid, {
+        items: this.items,
+        games: this.games,
+        totalCount: this.totalCount,
+        loading: this.loadingMore,
+        onUpdateItem: (collectionItem) => { this.editingItem = collectionItem; },
+        onRemoveItem: (id) => this.handleRemoveItem(id),
+        onVisibleRangeChange: (start, end, loaded) => this.handleVisibleRangeChange(start, end, loaded)
+      }),
 
       this.editingItem && m(EditItemModal, {
         item: this.editingItem,

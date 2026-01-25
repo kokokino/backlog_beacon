@@ -379,6 +379,67 @@ Meteor.methods({
     return count;
   },
 
+  async 'collection.getItemsChunk'(options = {}) {
+    check(options, {
+      sort: Match.Maybe(String),
+      limit: Match.Maybe(Number),
+      skip: Match.Maybe(Number),
+      status: Match.Maybe(String),
+      platform: Match.Maybe(String),
+      favorite: Match.Maybe(Boolean),
+      search: Match.Maybe(String)
+    });
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'You must be logged in');
+    }
+
+    await checkRateLimit(this.userId, 'collection.getItemsChunk');
+
+    const query = { userId: this.userId };
+
+    if (options.status) {
+      query.status = options.status;
+    }
+
+    if (options.platform) {
+      query.$or = [
+        { platforms: options.platform },
+        { platform: options.platform }
+      ];
+    }
+
+    if (options.favorite === true) {
+      query.favorite = true;
+    }
+
+    if (options.search && options.search.trim().length > 0) {
+      query.gameName = { $regex: options.search.trim(), $options: 'i' };
+    }
+
+    // Build sort options
+    const sortValue = options.sort || 'name-asc';
+    const sortField = sortValue.startsWith('date') ? 'dateAdded' : 'gameName';
+    const sortDirection = sortValue.endsWith('desc') ? -1 : 1;
+
+    const findOptions = {
+      sort: { [sortField]: sortDirection },
+      limit: Math.min(options.limit || 100, 200),
+      skip: options.skip || 0
+    };
+
+    const items = await CollectionItems.find(query, findOptions).fetchAsync();
+
+    // Fetch associated games
+    const gameIds = items.map(item => item.gameId).filter(Boolean);
+    const games = await Games.find({ _id: { $in: gameIds } }).fetchAsync();
+
+    return {
+      items,
+      games
+    };
+  },
+
   async 'games.count'(filters = {}) {
     check(filters, {
       search: Match.Maybe(String),
