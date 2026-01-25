@@ -266,6 +266,8 @@ const CollectionContent = {
   },
 
   view(vnode) {
+    const hasActiveFilters = this.filters.status || this.filters.platform ||
+                             this.filters.favorite || this.filters.search;
     const maxPages = Math.ceil(this.totalCount / PAGE_SIZE) || 1;
     const startIndex = this.totalCount > 0 ? ((this.currentPage - 1) * PAGE_SIZE) + 1 : 0;
     const endIndex = Math.min(this.currentPage * PAGE_SIZE, this.totalCount);
@@ -288,7 +290,17 @@ const CollectionContent = {
         m('p', 'Loading your collection...')
       ]),
 
-      !this.loading && this.items.length === 0 && m('div.empty-state', [
+      // No results due to filters
+      !this.loading && this.items.length === 0 && hasActiveFilters && m('div.empty-state', [
+        m('h3', 'No games match your filters'),
+        m('p', 'Try adjusting your search or filter criteria.'),
+        m('button', { onclick: () => this.handleClearFilters() }, 'Clear Filters'), 
+        m('p', 'Or browse games to add them to your collection.'),
+        m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')
+      ]),
+
+      // Truly empty collection
+      !this.loading && this.items.length === 0 && !hasActiveFilters && m('div.empty-state', [
         m('h3', 'No games in your collection'),
         m('p', 'Start by browsing games and adding them to your collection.'),
         m('a.button', { href: '/browse', oncreate: m.route.link }, 'Browse Games')

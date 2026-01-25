@@ -117,6 +117,10 @@ header nav a.logout {
   margin-bottom: 1.5rem;
 }
 
+.empty-state button {
+  margin-bottom: 1.5rem;
+}
+
 .games-grid,
 .collection-grid {
   display: grid;
