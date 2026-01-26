@@ -16,6 +16,7 @@ export const VirtualScrollGrid = {
     this.attrs = vnode.attrs;
     this.measured = false;
     this.isResizing = false;      // Prevent resize feedback loops
+    this.prevItemCount = 0;       // Track item count for change detection
   },
 
   oncreate(vnode) {
@@ -34,14 +35,9 @@ export const VirtualScrollGrid = {
 
     // Throttled scroll with rAF + scroll end detection
     this.scrollEndTimeout = null;
-    this.scrollRetryTimeout = null;
     this.scrollHandler = () => {
-      // Clear any pending timeouts
       if (this.scrollEndTimeout) {
         clearTimeout(this.scrollEndTimeout);
-      }
-      if (this.scrollRetryTimeout) {
-        clearTimeout(this.scrollRetryTimeout);
       }
 
       if (!this.ticking) {
@@ -56,33 +52,6 @@ export const VirtualScrollGrid = {
       this.scrollEndTimeout = setTimeout(() => {
         this.updateVisibleRange();
         m.redraw();
-
-        // More aggressive retry for fast scroll - check every 100ms up to 10 times
-        const items = this.attrs?.items || [];
-        const sliceStart = Math.max(0, this.visibleStartIndex);
-        if (sliceStart >= items.length && items.length > 0) {
-          let retryCount = 0;
-          const maxRetries = 10;
-
-          // Clear any existing retry interval
-          if (this.scrollRetryInterval) {
-            clearInterval(this.scrollRetryInterval);
-          }
-
-          this.scrollRetryInterval = setInterval(() => {
-            retryCount++;
-            const currentItems = this.attrs?.items || [];
-            const currentSliceStart = Math.max(0, this.visibleStartIndex);
-
-            if (currentSliceStart < currentItems.length || retryCount >= maxRetries) {
-              // Data arrived or max retries reached
-              clearInterval(this.scrollRetryInterval);
-              this.scrollRetryInterval = null;
-            }
-            this.updateVisibleRange();
-            m.redraw();
-          }, 100);
-        }
       }, 100);
     };
 
@@ -134,14 +103,26 @@ export const VirtualScrollGrid = {
 
   onupdate(vnode) {
     this.attrs = vnode.attrs;
+    const currentItemCount = vnode.attrs.items?.length || 0;
 
     // Re-measure if we haven't yet and items are available
-    if (!this.measured && vnode.attrs.items.length > 0) {
+    if (!this.measured && currentItemCount > 0) {
       requestAnimationFrame(() => {
         this.measureItemHeight();
         this.updateVisibleRange();
         m.redraw();
       });
+    }
+
+    // When items count changes (data arrived), update visible range
+    // This ensures we continue loading if scrolled past loaded data
+    if (currentItemCount !== this.prevItemCount) {
+      this.prevItemCount = currentItemCount;
+      // Use setTimeout to run after current render cycle completes
+      setTimeout(() => {
+        this.updateVisibleRange();
+        m.redraw();
+      }, 0);
     }
   },
 
@@ -157,12 +138,6 @@ export const VirtualScrollGrid = {
     }
     if (this.scrollEndTimeout) {
       clearTimeout(this.scrollEndTimeout);
-    }
-    if (this.scrollRetryTimeout) {
-      clearTimeout(this.scrollRetryTimeout);
-    }
-    if (this.scrollRetryInterval) {
-      clearInterval(this.scrollRetryInterval);
     }
   },
 
@@ -301,9 +276,6 @@ export const VirtualScrollGrid = {
     const sliceStart = Math.max(0, this.visibleStartIndex);
     let sliceEnd = Math.min(this.visibleEndIndex + 1, items.length);
 
-    // Check if scrolled past loaded data
-    const isPastLoadedData = sliceStart >= items.length && items.length > 0 && items.length < totalCount;
-
     // Extend sliceEnd to complete the current row (if we have more items loaded)
     const itemsInLastRow = sliceEnd % this.itemsPerRow;
     if (itemsInLastRow > 0 && sliceEnd < items.length) {
@@ -311,10 +283,12 @@ export const VirtualScrollGrid = {
       sliceEnd = Math.min(sliceEnd + itemsNeededToCompleteRow, items.length);
     }
 
-    // Only show items that are actually in the loaded range
-    const visibleItems = sliceStart < items.length
-      ? items.slice(sliceStart, sliceEnd)
-      : [];
+    // Get items from the slice and filter out undefined entries (sparse array gaps)
+    const rawSlice = sliceStart < items.length ? items.slice(sliceStart, sliceEnd) : [];
+    const visibleItems = rawSlice.filter(item => item !== undefined);
+
+    // Check if scrolled to a range with no loaded items yet
+    const isPastLoadedData = visibleItems.length === 0 && totalCount > 0 && sliceStart < totalCount;
 
     const startRow = Math.floor(this.visibleStartIndex / this.itemsPerRow);
     const topOffset = startRow * rowHeight;

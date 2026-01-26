@@ -40,6 +40,7 @@ const CollectionContent = {
     this.isSearchPending = false;
     this.viewMode = VIEW_MODES.PAGES;
     this.loadedCount = 0;  // Track how many items are loaded in infinite mode
+    this.loadedRanges = [];  // Track loaded ranges for sparse loading: [[start, end], ...]
     this.visibleStart = 0;  // For position indicator
     this.visibleEnd = 0;    // For position indicator
   },
@@ -213,18 +214,27 @@ const CollectionContent = {
   },
 
   async loadInitialInfiniteData() {
+    // Reset sparse array state
+    this.items = [];
+    this.loadedRanges = [];
+
     const options = this.buildFilterOptions();
     options.limit = INFINITE_CHUNK_SIZE;
     options.skip = 0;
 
     try {
       const result = await Meteor.callAsync('collection.getItemsChunk', options);
-      this.items = result.items || [];
+      const newItems = result.items || [];
+      this.items = newItems;  // Initial load starts at index 0
       this.games = {};
       (result.games || []).forEach(game => {
         this.games[game._id] = game;
       });
-      this.loadedCount = this.items.length;
+      this.loadedCount = newItems.length;
+      // Track the initial loaded range
+      if (newItems.length > 0) {
+        this.loadedRanges = [[0, newItems.length - 1]];
+      }
       this.loading = false;
       m.redraw();
     } catch (error) {
@@ -251,6 +261,40 @@ const CollectionContent = {
       options.search = this.filters.search.trim();
     }
     return options;
+  },
+
+  // Check if a range is already loaded (for sparse loading)
+  isRangeLoaded(start, end) {
+    for (const [rangeStart, rangeEnd] of this.loadedRanges) {
+      if (start >= rangeStart && end <= rangeEnd) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  // Merge adjacent/overlapping ranges for cleaner tracking
+  mergeAdjacentRanges() {
+    if (this.loadedRanges.length < 2) {
+      return;
+    }
+
+    this.loadedRanges.sort((a, b) => a[0] - b[0]);
+    const merged = [this.loadedRanges[0]];
+
+    for (let rangeIndex = 1; rangeIndex < this.loadedRanges.length; rangeIndex++) {
+      const last = merged[merged.length - 1];
+      const current = this.loadedRanges[rangeIndex];
+
+      // Allow merging ranges that are adjacent (within 1 index) or overlapping
+      if (current[0] <= last[1] + 1) {
+        last[1] = Math.max(last[1], current[1]);
+      } else {
+        merged.push(current);
+      }
+    }
+
+    this.loadedRanges = merged;
   },
 
   handleFilterChange(newFilters) {
@@ -365,6 +409,7 @@ const CollectionContent = {
     }
     this.viewMode = newMode;
     this.items = [];
+    this.loadedRanges = [];
     this.loadedCount = 0;
     this.currentPage = 1;
     // Scroll to top when switching modes
@@ -377,27 +422,24 @@ const CollectionContent = {
     this.visibleStart = startIdx + 1;
     this.visibleEnd = Math.min(endIdx + 1, this.totalCount);
 
-    // Prefetch forward when approaching the edge of loaded data
-    const actualLoaded = loadedCount || this.items.length;
-    const shouldLoad = endIdx >= actualLoaded - PREFETCH_THRESHOLD && actualLoaded < this.totalCount && !this.loadingMore;
+    // Don't try to load if already loading or no more data
+    if (this.loadingMore) {
+      m.redraw();
+      return;
+    }
 
-    // console.log('[CollectionPage] handleVisibleRangeChange:', {
-    //   startIdx, endIdx, actualLoaded,
-    //   totalCount: this.totalCount,
-    //   threshold: actualLoaded - PREFETCH_THRESHOLD,
-    //   loadingMore: this.loadingMore,
-    //   shouldLoad
-    // });
-
-    if (shouldLoad) {
-      // console.log('[CollectionPage] Triggering loadMoreItems from index:', actualLoaded);
-      this.loadMoreItems(actualLoaded);
+    // Check if the visible range is loaded (sparse loading)
+    const rangeEnd = Math.min(endIdx, this.totalCount - 1);
+    if (!this.isRangeLoaded(startIdx, rangeEnd)) {
+      // Calculate which chunk contains the start of visible range (chunk-aligned)
+      const chunkStart = Math.floor(startIdx / INFINITE_CHUNK_SIZE) * INFINITE_CHUNK_SIZE;
+      this.loadItemsAtRange(chunkStart);
     }
 
     m.redraw();
   },
 
-  async loadMoreItems(fromIndex) {
+  async loadItemsAtRange(fromIndex) {
     if (this.loadingMore || fromIndex >= this.totalCount) {
       return;
     }
@@ -419,11 +461,22 @@ const CollectionContent = {
         this.games[game._id] = game;
       });
 
-      // Append items
-      this.items = [...this.items, ...newItems];
-      this.loadedCount = this.items.length;
+      // Store items at their actual indices (sparse array)
+      newItems.forEach((item, itemIndex) => {
+        this.items[fromIndex + itemIndex] = item;
+      });
+
+      // Track loaded range
+      const rangeEnd = fromIndex + newItems.length - 1;
+      if (newItems.length > 0) {
+        this.loadedRanges.push([fromIndex, rangeEnd]);
+        this.mergeAdjacentRanges();
+      }
+
+      // loadedCount tracks actual items (not sparse length)
+      this.loadedCount = this.items.filter(item => item !== undefined).length;
     } catch (error) {
-      console.error('Failed to load more items:', error);
+      console.error('Failed to load items at range:', error);
     }
 
     this.loadingMore = false;
