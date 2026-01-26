@@ -5,6 +5,7 @@ export const VirtualScrollGrid = {
   oninit(vnode) {
     this.scrollTop = 0;
     this.containerHeight = 0;
+    this.containerWidth = 0;      // Track width to detect real resizes
     this.itemHeight = 0;          // Will be measured from actual items
     this.rowGap = 24;             // 1.5rem gap
     this.itemsPerRow = 4;         // Recalculated on resize
@@ -14,6 +15,7 @@ export const VirtualScrollGrid = {
     this.ticking = false;
     this.attrs = vnode.attrs;
     this.measured = false;
+    this.isResizing = false;      // Prevent resize feedback loops
   },
 
   oncreate(vnode) {
@@ -30,8 +32,18 @@ export const VirtualScrollGrid = {
       m.redraw();
     });
 
-    // Throttled scroll with rAF
+    // Throttled scroll with rAF + scroll end detection
+    this.scrollEndTimeout = null;
+    this.scrollRetryTimeout = null;
     this.scrollHandler = () => {
+      // Clear any pending timeouts
+      if (this.scrollEndTimeout) {
+        clearTimeout(this.scrollEndTimeout);
+      }
+      if (this.scrollRetryTimeout) {
+        clearTimeout(this.scrollRetryTimeout);
+      }
+
       if (!this.ticking) {
         requestAnimationFrame(() => {
           this.updateVisibleRange();
@@ -39,16 +51,67 @@ export const VirtualScrollGrid = {
         });
         this.ticking = true;
       }
+
+      // Set a timeout to catch scroll end (for fast scrollbar drags)
+      this.scrollEndTimeout = setTimeout(() => {
+        this.updateVisibleRange();
+        m.redraw();
+
+        // If no visible items after scroll end, retry after data might have loaded
+        this.scrollRetryTimeout = setTimeout(() => {
+          const items = this.attrs?.items || [];
+          const sliceStart = Math.max(0, this.visibleStartIndex);
+          if (sliceStart >= items.length && items.length > 0) {
+            // Still scrolled beyond data, force another update
+            this.updateVisibleRange();
+            m.redraw();
+          }
+        }, 300);
+      }, 100);
     };
 
     this.scrollEl.addEventListener('scroll', this.scrollHandler, { passive: true });
 
-    // ResizeObserver for responsive grid
+    // ResizeObserver for responsive grid (debounced to avoid jank during resize)
+    this.resizeTimeout = null;
+    this.containerWidth = this.containerEl.clientWidth;
     this.resizeObserver = new ResizeObserver(() => {
-      this.measureContainer();
-      this.measureItemHeight();
-      this.updateVisibleRange();
-      m.redraw();
+      // Prevent feedback loops - only respond to actual width changes
+      const newWidth = this.containerEl.clientWidth;
+      if (Math.abs(newWidth - this.containerWidth) < 5) {
+        return;  // Width didn't really change, ignore
+      }
+
+      if (this.resizeTimeout) {
+        clearTimeout(this.resizeTimeout);
+      }
+      this.resizeTimeout = setTimeout(() => {
+        // Double-check width still different (might have changed back during debounce)
+        const currentWidth = this.containerEl.clientWidth;
+        if (Math.abs(currentWidth - this.containerWidth) < 5) {
+          return;
+        }
+        this.containerWidth = currentWidth;
+
+        const oldItemsPerRow = this.itemsPerRow;
+
+        this.measureContainer();
+        this.measureItemHeight();
+
+        // If itemsPerRow changed, reset visible range to align with new grid
+        if (oldItemsPerRow !== this.itemsPerRow) {
+          // Calculate which row we were viewing (approximately)
+          const currentRow = Math.floor(this.visibleStartIndex / oldItemsPerRow);
+          // Realign to new grid
+          this.visibleStartIndex = currentRow * this.itemsPerRow;
+          this.visibleEndIndex = this.visibleStartIndex + (this.itemsPerRow * 8) - 1;
+          // Reset measured flag to re-measure item height with new layout
+          this.measured = false;
+        }
+
+        this.updateVisibleRange();
+        m.redraw();
+      }, 150);  // 150ms debounce
     });
     this.resizeObserver.observe(this.containerEl);
   },
@@ -72,6 +135,15 @@ export const VirtualScrollGrid = {
     }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
+    }
+    if (this.resizeTimeout) {
+      clearTimeout(this.resizeTimeout);
+    }
+    if (this.scrollEndTimeout) {
+      clearTimeout(this.scrollEndTimeout);
+    }
+    if (this.scrollRetryTimeout) {
+      clearTimeout(this.scrollRetryTimeout);
     }
   },
 
@@ -114,10 +186,25 @@ export const VirtualScrollGrid = {
       return;
     }
 
-    // Find the first game card and measure it
-    const card = this.containerEl.querySelector('.game-card');
-    if (card) {
-      const rect = card.getBoundingClientRect();
+    // Find game cards and measure actual row height from positions
+    const cards = this.containerEl.querySelectorAll('.game-card');
+    if (cards.length >= 2) {
+      // Find two cards on different rows to measure actual row height (including gap)
+      const firstCardRect = cards[0].getBoundingClientRect();
+      this.itemHeight = firstCardRect.height;
+
+      // Find the first card on the second row
+      for (let i = 1; i < cards.length; i++) {
+        const cardRect = cards[i].getBoundingClientRect();
+        if (cardRect.top > firstCardRect.bottom) {
+          // This card is on a new row - measure the actual gap
+          this.rowGap = cardRect.top - firstCardRect.bottom;
+          break;
+        }
+      }
+      this.measured = true;
+    } else if (cards.length === 1) {
+      const rect = cards[0].getBoundingClientRect();
       this.itemHeight = rect.height;
       this.measured = true;
     } else {
@@ -186,13 +273,12 @@ export const VirtualScrollGrid = {
     const itemHeight = this.itemHeight || 450;
     const rowHeight = itemHeight + this.rowGap;
     const totalRows = Math.ceil(totalCount / this.itemsPerRow);
-    const totalHeight = totalRows * rowHeight;
+    // Total height: all rows with gaps between them, but no gap after the last row
+    const totalHeight = totalRows > 0
+      ? (totalRows * itemHeight) + ((totalRows - 1) * this.rowGap)
+      : 0;
 
-    const startRow = Math.floor(this.visibleStartIndex / this.itemsPerRow);
-    const topOffset = startRow * rowHeight;
-
-    // Slice visible items from the loaded data
-    // Ensure we always render complete rows for cleaner appearance
+    // Calculate slice bounds
     const sliceStart = Math.max(0, this.visibleStartIndex);
     let sliceEnd = Math.min(this.visibleEndIndex + 1, items.length);
 
@@ -203,7 +289,13 @@ export const VirtualScrollGrid = {
       sliceEnd = Math.min(sliceEnd + itemsNeededToCompleteRow, items.length);
     }
 
-    const visibleItems = items.slice(sliceStart, sliceEnd);
+    // Only show items that are actually in the loaded range
+    const visibleItems = sliceStart < items.length
+      ? items.slice(sliceStart, sliceEnd)
+      : [];
+
+    const startRow = Math.floor(this.visibleStartIndex / this.itemsPerRow);
+    const topOffset = startRow * rowHeight;
 
     // Calculate actual displayed range for position indicator
     // Show position within totalCount, not just loaded items
