@@ -462,8 +462,8 @@ const CollectionContent = {
         onClearFilters: () => this.handleClearFilters()
       }),
 
-      // View mode selector (only show if there are items or filters applied)
-      (this.totalCount > 0 || hasActiveFilters) && m(ViewModeSelector, {
+      // View mode selector
+      m(ViewModeSelector, {
         currentMode: this.viewMode,
         onModeChange: (mode) => this.handleModeChange(mode)
       }),
