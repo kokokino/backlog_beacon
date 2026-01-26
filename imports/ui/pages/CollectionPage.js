@@ -13,7 +13,6 @@ import { Games } from '../../lib/collections/games.js';
 
 const PAGE_SIZE = 24;
 const INFINITE_CHUNK_SIZE = 100;
-const PREFETCH_THRESHOLD = 20;
 
 const CollectionContent = {
   oninit(vnode) {

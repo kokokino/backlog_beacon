@@ -118,8 +118,12 @@ export const VirtualScrollGrid = {
     // This ensures we continue loading if scrolled past loaded data
     if (currentItemCount !== this.prevItemCount) {
       this.prevItemCount = currentItemCount;
+      // Clear any pending update to avoid stacking
+      if (this.itemChangeTimeout) {
+        clearTimeout(this.itemChangeTimeout);
+      }
       // Use setTimeout to run after current render cycle completes
-      setTimeout(() => {
+      this.itemChangeTimeout = setTimeout(() => {
         this.updateVisibleRange();
         m.redraw();
       }, 0);
@@ -138,6 +142,9 @@ export const VirtualScrollGrid = {
     }
     if (this.scrollEndTimeout) {
       clearTimeout(this.scrollEndTimeout);
+    }
+    if (this.itemChangeTimeout) {
+      clearTimeout(this.itemChangeTimeout);
     }
   },
 
