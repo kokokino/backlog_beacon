@@ -1,6 +1,5 @@
 import m from 'mithril';
 import { GameCard } from './GameCard.js';
-import { PositionIndicator } from './PositionIndicator.js';
 
 export const VirtualScrollGrid = {
   oninit(vnode) {
@@ -137,9 +136,8 @@ export const VirtualScrollGrid = {
       totalCount - 1
     );
 
-    // Always trigger prefetch check, not just on range change
-    // Check if we're approaching the edge of loaded data
-    if (this.attrs.onVisibleRangeChange && loadedCount < totalCount) {
+    // Always call the callback to update position indicator and trigger prefetch
+    if (this.attrs.onVisibleRangeChange) {
       console.log('[VirtualScroll] Visible range:', newStartIndex, '-', newEndIndex, 'loaded:', loadedCount, 'total:', totalCount);
       this.attrs.onVisibleRangeChange(newStartIndex, newEndIndex, loadedCount);
     }
@@ -202,15 +200,7 @@ export const VirtualScrollGrid = {
             })
           )
         )
-      ]),
-
-      // Position indicator
-      totalCount > 0 && m(PositionIndicator, {
-        start: displayStart,
-        end: displayEnd,
-        total: totalCount,
-        loading: loading
-      })
+      ])
     ]);
   }
 };

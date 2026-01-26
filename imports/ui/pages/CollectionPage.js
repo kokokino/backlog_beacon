@@ -7,6 +7,7 @@ import { EditItemModal } from '../components/EditItemModal.js';
 import { CollectionFilters } from '../components/CollectionFilters.js';
 import { ViewModeSelector, VIEW_MODES } from '../components/ViewModeSelector.js';
 import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
+import { PositionIndicator } from '../components/PositionIndicator.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
@@ -39,6 +40,8 @@ const CollectionContent = {
     this.isSearchPending = false;
     this.viewMode = VIEW_MODES.PAGES;
     this.loadedCount = 0;  // Track how many items are loaded in infinite mode
+    this.visibleStart = 0;  // For position indicator
+    this.visibleEnd = 0;    // For position indicator
   },
 
   oncreate(vnode) {
@@ -370,6 +373,10 @@ const CollectionContent = {
   },
 
   handleVisibleRangeChange(startIdx, endIdx, loadedCount) {
+    // Update position indicator state
+    this.visibleStart = startIdx + 1;
+    this.visibleEnd = Math.min(endIdx + 1, this.totalCount);
+
     // Prefetch forward when approaching the edge of loaded data
     const actualLoaded = loadedCount || this.items.length;
     const shouldLoad = endIdx >= actualLoaded - PREFETCH_THRESHOLD && actualLoaded < this.totalCount && !this.loadingMore;
@@ -386,6 +393,8 @@ const CollectionContent = {
       console.log('[CollectionPage] Triggering loadMoreItems from index:', actualLoaded);
       this.loadMoreItems(actualLoaded);
     }
+
+    m.redraw();
   },
 
   async loadMoreItems(fromIndex) {
@@ -525,6 +534,14 @@ const CollectionContent = {
         onUpdateItem: (collectionItem) => { this.editingItem = collectionItem; },
         onRemoveItem: (id) => this.handleRemoveItem(id),
         onVisibleRangeChange: (start, end, loaded) => this.handleVisibleRangeChange(start, end, loaded)
+      }),
+
+      // Position indicator for infinite mode (rendered at page level to avoid contain:layout issues)
+      !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.INFINITE && this.totalCount > 0 && m(PositionIndicator, {
+        start: this.visibleStart || 1,
+        end: this.visibleEnd || Math.min(24, this.totalCount),
+        total: this.totalCount,
+        loading: this.loadingMore
       }),
 
       this.editingItem && m(EditItemModal, {
