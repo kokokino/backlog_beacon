@@ -1411,7 +1411,7 @@ dialog article footer button {
 /* Position Indicator */
 .position-indicator {
   position: fixed;
-  bottom: 1rem;
+  bottom: 7rem;
   left: 50%;
   transform: translateX(-50%);
   background: var(--pico-card-background-color);
@@ -1439,7 +1439,7 @@ dialog article footer button {
   }
 
   .position-indicator {
-    bottom: 0.5rem;
+    bottom: 4rem;
     padding: 0.375rem 0.75rem;
     font-size: 0.8rem;
   }
