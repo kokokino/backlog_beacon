@@ -16,7 +16,6 @@ export const VirtualScrollGrid = {
     this.attrs = vnode.attrs;
     this.measured = false;
     this.isResizing = false;      // Prevent resize feedback loops
-    this.prevItemCount = 0;       // Track item count for change detection
   },
 
   oncreate(vnode) {
@@ -113,21 +112,6 @@ export const VirtualScrollGrid = {
         m.redraw();
       });
     }
-
-    // When items count changes (data arrived), update visible range
-    // This ensures we continue loading if scrolled past loaded data
-    if (currentItemCount !== this.prevItemCount) {
-      this.prevItemCount = currentItemCount;
-      // Clear any pending update to avoid stacking
-      if (this.itemChangeTimeout) {
-        clearTimeout(this.itemChangeTimeout);
-      }
-      // Use setTimeout to run after current render cycle completes
-      this.itemChangeTimeout = setTimeout(() => {
-        this.updateVisibleRange();
-        m.redraw();
-      }, 0);
-    }
   },
 
   onremove() {
@@ -142,9 +126,6 @@ export const VirtualScrollGrid = {
     }
     if (this.scrollEndTimeout) {
       clearTimeout(this.scrollEndTimeout);
-    }
-    if (this.itemChangeTimeout) {
-      clearTimeout(this.itemChangeTimeout);
     }
   },
 

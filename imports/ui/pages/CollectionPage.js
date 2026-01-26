@@ -480,6 +480,17 @@ const CollectionContent = {
 
     this.loadingMore = false;
     m.redraw();
+
+    // Check if visible range needs more chunks (cascading load)
+    // This handles viewports that span multiple chunks
+    const visibleStartIdx = this.visibleStart - 1;  // Convert from 1-indexed
+    const visibleEndIdx = Math.min(this.visibleEnd - 1, this.totalCount - 1);
+    if (visibleEndIdx >= 0 && !this.isRangeLoaded(visibleStartIdx, visibleEndIdx)) {
+      const nextChunkStart = Math.floor(visibleEndIdx / INFINITE_CHUNK_SIZE) * INFINITE_CHUNK_SIZE;
+      if (nextChunkStart > fromIndex) {
+        this.loadItemsAtRange(nextChunkStart);
+      }
+    }
   },
 
   async handleRemoveItem(itemId) {
