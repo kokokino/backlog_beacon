@@ -381,16 +381,16 @@ const CollectionContent = {
     const actualLoaded = loadedCount || this.items.length;
     const shouldLoad = endIdx >= actualLoaded - PREFETCH_THRESHOLD && actualLoaded < this.totalCount && !this.loadingMore;
 
-    console.log('[CollectionPage] handleVisibleRangeChange:', {
-      startIdx, endIdx, actualLoaded,
-      totalCount: this.totalCount,
-      threshold: actualLoaded - PREFETCH_THRESHOLD,
-      loadingMore: this.loadingMore,
-      shouldLoad
-    });
+    // console.log('[CollectionPage] handleVisibleRangeChange:', {
+    //   startIdx, endIdx, actualLoaded,
+    //   totalCount: this.totalCount,
+    //   threshold: actualLoaded - PREFETCH_THRESHOLD,
+    //   loadingMore: this.loadingMore,
+    //   shouldLoad
+    // });
 
     if (shouldLoad) {
-      console.log('[CollectionPage] Triggering loadMoreItems from index:', actualLoaded);
+      // console.log('[CollectionPage] Triggering loadMoreItems from index:', actualLoaded);
       this.loadMoreItems(actualLoaded);
     }
 

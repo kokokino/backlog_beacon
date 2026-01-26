@@ -138,7 +138,7 @@ export const VirtualScrollGrid = {
 
     // Always call the callback to update position indicator and trigger prefetch
     if (this.attrs.onVisibleRangeChange) {
-      console.log('[VirtualScroll] Visible range:', newStartIndex, '-', newEndIndex, 'loaded:', loadedCount, 'total:', totalCount);
+      // console.log('[VirtualScroll] Visible range:', newStartIndex, '-', newEndIndex, 'loaded:', loadedCount, 'total:', totalCount);
       this.attrs.onVisibleRangeChange(newStartIndex, newEndIndex, loadedCount);
     }
 
