@@ -8,7 +8,7 @@ export const VirtualScrollGrid = {
     this.itemHeight = 0;          // Will be measured from actual items
     this.rowGap = 24;             // 1.5rem gap
     this.itemsPerRow = 4;         // Recalculated on resize
-    this.bufferRows = 2;          // Rows above/below viewport for smooth scroll
+    this.minBufferItems = 12;     // Minimum items to buffer above/below viewport
     this.visibleStartIndex = 0;
     this.visibleEndIndex = 23;    // Initial visible range
     this.ticking = false;
@@ -79,11 +79,34 @@ export const VirtualScrollGrid = {
     if (!this.containerEl) {
       return;
     }
-    const width = this.containerEl.clientWidth;
-    const minItemWidth = 280;
-    const gap = 24;
-    this.itemsPerRow = Math.max(1, Math.floor((width + gap) / (minItemWidth + gap)));
     this.containerHeight = window.innerHeight;
+
+    // Measure actual items per row from the DOM by checking item positions
+    const cards = this.containerEl.querySelectorAll('.game-card');
+    if (cards.length >= 2) {
+      const firstCardTop = cards[0].getBoundingClientRect().top;
+      let itemsInFirstRow = 1;
+      for (let i = 1; i < cards.length; i++) {
+        if (Math.abs(cards[i].getBoundingClientRect().top - firstCardTop) < 5) {
+          itemsInFirstRow++;
+        } else {
+          break;
+        }
+      }
+      this.itemsPerRow = itemsInFirstRow;
+    } else if (cards.length === 1) {
+      // Only one card, estimate based on container width
+      const cardWidth = cards[0].getBoundingClientRect().width;
+      const containerWidth = this.containerEl.clientWidth;
+      const gap = 24;
+      this.itemsPerRow = Math.max(1, Math.floor((containerWidth + gap) / (cardWidth + gap)));
+    } else {
+      // No cards yet, use fallback
+      const width = this.containerEl.clientWidth;
+      const minItemWidth = 200;  // More conservative estimate
+      const gap = 24;
+      this.itemsPerRow = Math.max(1, Math.floor((width + gap) / (minItemWidth + gap)));
+    }
   },
 
   measureItemHeight() {
@@ -126,11 +149,16 @@ export const VirtualScrollGrid = {
     const visibleRows = Math.ceil(this.containerHeight / rowHeight);
     const scrolledRows = Math.floor(scrollTop / rowHeight);
 
-    const startRow = Math.max(0, scrolledRows - this.bufferRows);
+    // Dynamic buffer: ensure at least minBufferItems above and below
+    // This adapts to different screen widths (fewer items per row = more buffer rows needed)
+    const bufferRows = Math.max(2, Math.ceil(this.minBufferItems / this.itemsPerRow));
+
+    const startRow = Math.max(0, scrolledRows - bufferRows);
     const totalRows = Math.ceil(totalCount / this.itemsPerRow);
-    const endRow = Math.min(totalRows - 1, scrolledRows + visibleRows + this.bufferRows);
+    const endRow = Math.min(totalRows - 1, scrolledRows + visibleRows + bufferRows);
 
     const newStartIndex = startRow * this.itemsPerRow;
+    // Always end on a complete row (unless it's the actual last row)
     const newEndIndex = Math.min(
       (endRow + 1) * this.itemsPerRow - 1,
       totalCount - 1
@@ -164,8 +192,17 @@ export const VirtualScrollGrid = {
     const topOffset = startRow * rowHeight;
 
     // Slice visible items from the loaded data
+    // Ensure we always render complete rows for cleaner appearance
     const sliceStart = Math.max(0, this.visibleStartIndex);
-    const sliceEnd = Math.min(this.visibleEndIndex + 1, items.length);
+    let sliceEnd = Math.min(this.visibleEndIndex + 1, items.length);
+
+    // Extend sliceEnd to complete the current row (if we have more items loaded)
+    const itemsInLastRow = sliceEnd % this.itemsPerRow;
+    if (itemsInLastRow > 0 && sliceEnd < items.length) {
+      const itemsNeededToCompleteRow = this.itemsPerRow - itemsInLastRow;
+      sliceEnd = Math.min(sliceEnd + itemsNeededToCompleteRow, items.length);
+    }
+
     const visibleItems = items.slice(sliceStart, sliceEnd);
 
     // Calculate actual displayed range for position indicator
