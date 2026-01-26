@@ -57,16 +57,32 @@ export const VirtualScrollGrid = {
         this.updateVisibleRange();
         m.redraw();
 
-        // If no visible items after scroll end, retry after data might have loaded
-        this.scrollRetryTimeout = setTimeout(() => {
-          const items = this.attrs?.items || [];
-          const sliceStart = Math.max(0, this.visibleStartIndex);
-          if (sliceStart >= items.length && items.length > 0) {
-            // Still scrolled beyond data, force another update
+        // More aggressive retry for fast scroll - check every 100ms up to 10 times
+        const items = this.attrs?.items || [];
+        const sliceStart = Math.max(0, this.visibleStartIndex);
+        if (sliceStart >= items.length && items.length > 0) {
+          let retryCount = 0;
+          const maxRetries = 10;
+
+          // Clear any existing retry interval
+          if (this.scrollRetryInterval) {
+            clearInterval(this.scrollRetryInterval);
+          }
+
+          this.scrollRetryInterval = setInterval(() => {
+            retryCount++;
+            const currentItems = this.attrs?.items || [];
+            const currentSliceStart = Math.max(0, this.visibleStartIndex);
+
+            if (currentSliceStart < currentItems.length || retryCount >= maxRetries) {
+              // Data arrived or max retries reached
+              clearInterval(this.scrollRetryInterval);
+              this.scrollRetryInterval = null;
+            }
             this.updateVisibleRange();
             m.redraw();
-          }
-        }, 300);
+          }, 100);
+        }
       }, 100);
     };
 
@@ -144,6 +160,9 @@ export const VirtualScrollGrid = {
     }
     if (this.scrollRetryTimeout) {
       clearTimeout(this.scrollRetryTimeout);
+    }
+    if (this.scrollRetryInterval) {
+      clearInterval(this.scrollRetryInterval);
     }
   },
 
@@ -282,6 +301,9 @@ export const VirtualScrollGrid = {
     const sliceStart = Math.max(0, this.visibleStartIndex);
     let sliceEnd = Math.min(this.visibleEndIndex + 1, items.length);
 
+    // Check if scrolled past loaded data
+    const isPastLoadedData = sliceStart >= items.length && items.length > 0 && items.length < totalCount;
+
     // Extend sliceEnd to complete the current row (if we have more items loaded)
     const itemsInLastRow = sliceEnd % this.itemsPerRow;
     if (itemsInLastRow > 0 && sliceEnd < items.length) {
@@ -329,6 +351,12 @@ export const VirtualScrollGrid = {
             })
           )
         )
+      ]),
+
+      // Loading overlay when scrolled past loaded data
+      isPastLoadedData && m('div.virtual-scroll-loading', [
+        m('div.loading'),
+        m('p', 'Loading more games...')
       ])
     ]);
   }

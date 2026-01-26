@@ -1423,6 +1423,25 @@ dialog article footer button {
   z-index: 100;
 }
 
+/* Virtual Scroll Loading Overlay */
+.virtual-scroll-loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: var(--pico-card-background-color);
+  padding: 2rem;
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+}
+
+.virtual-scroll-loading p {
+  margin: 1rem 0 0 0;
+  color: var(--pico-muted-color);
+}
+
 .loading-dot {
   animation: blink 1s infinite;
 }
