@@ -59,7 +59,7 @@ export class BeanstalkScene {
     this.items = [];
     this.games = {};
     this.totalCount = 0;
-    this.gamePositionOffset = 0;  // Y offset for game index calculation
+    this.nextGameIndex = 0;  // Sequential game counter
 
     // Initialize
     this.init();
@@ -236,10 +236,46 @@ export class BeanstalkScene {
 
   prePopulateLeaves() {
     const numRings = this.plant.ring.length;
+
+    // Phase 1: Create leaves without game cases
     for (let ringIndex = 4; ringIndex < numRings - 4; ringIndex += 12 + Math.floor(Math.random() * 7)) {
-      this.spawnLeaf(ringIndex, true);
+      this.spawnLeafOnly(ringIndex);
     }
+
+    // Phase 2: Sort by ring index (bottom = lowest index)
     this.branches.sort((a, b) => a.ringIndex - b.ringIndex);
+
+    // Phase 3: Assign games sequentially from bottom to top
+    for (const branch of this.branches) {
+      this.spawnGameCaseOnLeaf(branch);
+    }
+  }
+
+  spawnLeafOnly(ringIndex) {
+    const branch = this.branchPool.getObject();
+    branch.setEnabled(true);
+    branch.getChildMeshes().forEach(child => child.setEnabled(true));
+
+    const targetRingIndex = ringIndex !== undefined ? ringIndex : this.plant.ring.length - 1;
+    branch.ringIndex = targetRingIndex;
+
+    const facingLeft = this.swap;
+    this.swap = !this.swap;
+    branch.facingLeft = facingLeft;
+    branch.ringPoint = facingLeft ? 4 : 6;
+
+    const ringPos = this.plant.ring[Math.floor(targetRingIndex)][branch.ringPoint];
+    branch.position.copyFrom(ringPos);
+
+    const scale = 0.5 + Math.random() * 0.2;
+    branch.scaling.set(scale, scale, scale);
+
+    branch.rotation.x = 0;
+    branch.rotation.y = facingLeft ? 180 * TO_RADIANS : 0;
+    branch.rotation.z = -15 * TO_RADIANS;
+
+    this.plant.addChild(branch);
+    this.branches.push(branch);
   }
 
   spawnLeaf(ringIndex, prePopulate = false) {
@@ -277,10 +313,9 @@ export class BeanstalkScene {
   }
 
   spawnGameCaseOnLeaf(branch) {
-    // Calculate game index based on plant position and leaf position
-    const gameIndex = this.calculateGameIndex(branch.ringIndex);
+    const gameIndex = this.nextGameIndex;
 
-    if (gameIndex < 0 || gameIndex >= this.totalCount) {
+    if (gameIndex >= this.totalCount) {
       return;
     }
 
@@ -314,13 +349,8 @@ export class BeanstalkScene {
     // Store reference
     branch.gameCase = gameCase;
     this.gameCases.push(gameCase);
-  }
 
-  calculateGameIndex(ringIndex) {
-    // Map ring position to game index
-    // Lower ring indices = earlier games, tip = latest games
-    const normalizedPosition = ringIndex / this.plant.ring.length;
-    return Math.floor((1 - normalizedPosition) * this.totalCount + this.gamePositionOffset);
+    this.nextGameIndex++;
   }
 
   render() {
@@ -341,9 +371,6 @@ export class BeanstalkScene {
     // Move plant (creates climbing illusion)
     this.plant.position.y -= climbVelocity * 6;
     this.plant.position.y = Math.max(Math.min(this.plant.position.y, -300), -1000);
-
-    // Update game position offset based on plant movement
-    this.gamePositionOffset += climbVelocity * 0.05;
 
     // Update plant ring positions
     for (let ringIndex = 0; ringIndex < this.plant.ringOrigin.length; ringIndex++) {
