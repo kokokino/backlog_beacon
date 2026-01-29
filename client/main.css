@@ -438,6 +438,10 @@ dialog {
   max-width: 500px;
 }
 
+dialog[open] {
+  z-index: 1001;
+}
+
 dialog article {
   margin: 0;
 }
