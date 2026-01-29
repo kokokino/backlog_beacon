@@ -70,6 +70,13 @@ export class BeanstalkScene {
     this.lastLeftRingIndex = -Infinity;
     this.lastRightRingIndex = -Infinity;
 
+    // Track lowest leaf position on each side for bottom spawning
+    this.lowestLeftRingIndex = Infinity;
+    this.lowestRightRingIndex = Infinity;
+
+    // Reusable temp vector to avoid allocations in render loop
+    this._tempPos = new BABYLON.Vector3();
+
     // Initialize
     this.init();
   }
@@ -271,13 +278,17 @@ export class BeanstalkScene {
     // Reset tracking
     this.lastLeftRingIndex = -Infinity;
     this.lastRightRingIndex = -Infinity;
+    this.lowestLeftRingIndex = Infinity;
+    this.lowestRightRingIndex = Infinity;
 
-    // Find the topmost leaf on each side
+    // Find the topmost and lowest leaf on each side
     for (const branch of this.branches) {
       if (branch.facingLeft) {
         this.lastLeftRingIndex = Math.max(this.lastLeftRingIndex, branch.ringIndex);
+        this.lowestLeftRingIndex = Math.min(this.lowestLeftRingIndex, branch.ringIndex);
       } else {
         this.lastRightRingIndex = Math.max(this.lastRightRingIndex, branch.ringIndex);
+        this.lowestRightRingIndex = Math.min(this.lowestRightRingIndex, branch.ringIndex);
       }
     }
   }
@@ -417,13 +428,8 @@ export class BeanstalkScene {
     // Check if we have enough spacing from the lowest leaf on this side
     const facingLeft = this.swap;
 
-    // Find the lowest existing leaf on the same side
-    let lowestSameSideRingIndex = Infinity;
-    for (const existingBranch of this.branches) {
-      if (existingBranch.facingLeft === facingLeft) {
-        lowestSameSideRingIndex = Math.min(lowestSameSideRingIndex, existingBranch.ringIndex);
-      }
-    }
+    // Use cached lowest ring index instead of O(n) loop
+    const lowestSameSideRingIndex = facingLeft ? this.lowestLeftRingIndex : this.lowestRightRingIndex;
 
     const spacing = lowestSameSideRingIndex - targetRingIndex;
     if (spacing < MIN_LEAF_SPACING) {
@@ -455,6 +461,13 @@ export class BeanstalkScene {
 
     // Insert at beginning of branches array (sorted by ring index, bottom first)
     this.branches.unshift(branch);
+
+    // Update cached lowest ring index for this side
+    if (facingLeft) {
+      this.lowestLeftRingIndex = Math.min(this.lowestLeftRingIndex, targetRingIndex);
+    } else {
+      this.lowestRightRingIndex = Math.min(this.lowestRightRingIndex, targetRingIndex);
+    }
 
     // Spawn game case with the lower game index
     this.spawnGameCaseOnLeaf(branch, targetGameIndex);
@@ -505,7 +518,7 @@ export class BeanstalkScene {
     // Update plant ring positions
     for (let ringIndex = 0; ringIndex < this.plant.ringOrigin.length; ringIndex++) {
       for (let vertexIndex = 0; vertexIndex < this.plant.ringOrigin[ringIndex].length; vertexIndex++) {
-        const pos = this.plant.ringOrigin[ringIndex][vertexIndex].clone();
+        this._tempPos.copyFrom(this.plant.ringOrigin[ringIndex][vertexIndex]);
 
         if (ringIndex === this.plant.ringOrigin.length - 1) {
           // Tip - sinusoidal spiral
@@ -519,8 +532,8 @@ export class BeanstalkScene {
           this.plant.offsetPoints[ringIndex] = this.plant.offsetPoints[ringIndex + 1];
         }
 
-        pos.addInPlace(this.plant.offsetPoints[ringIndex]);
-        this.plant.ring[ringIndex][vertexIndex].copyFrom(pos);
+        this._tempPos.addInPlace(this.plant.offsetPoints[ringIndex]);
+        this.plant.ring[ringIndex][vertexIndex].copyFrom(this._tempPos);
       }
     }
 
@@ -574,6 +587,7 @@ export class BeanstalkScene {
     }
 
     // Remove leaves past plant base (when scrolling up)
+    let removedAny = false;
     while (this.branches.length > 0 && this.branches[0].ringIndex < 0) {
       const oldBranch = this.branches.shift();
       this.plant.removeChild(oldBranch);
@@ -599,8 +613,7 @@ export class BeanstalkScene {
         this.minGameIndex = this.branches[0].gameIndex;
       }
 
-      // Update leaf tracking after removal
-      this.updateLeafTrackingFromBranches();
+      removedAny = true;
     }
 
     // Remove leaves past plant top (when scrolling down)
@@ -633,7 +646,11 @@ export class BeanstalkScene {
         }
       }
 
-      // Update leaf tracking after removal
+      removedAny = true;
+    }
+
+    // Update leaf tracking once after all removals
+    if (removedAny) {
       this.updateLeafTrackingFromBranches();
     }
 
