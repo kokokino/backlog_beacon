@@ -59,7 +59,11 @@ export class BeanstalkScene {
     this.items = [];
     this.games = {};
     this.totalCount = 0;
-    this.nextGameIndex = 0;  // Sequential game counter
+    this.nextGameIndex = 0;  // Next game to spawn at TOP
+    this.minGameIndex = 0;   // Lowest game index currently displayed
+
+    // Spawn counters for both directions
+    this.spawnCounterDown = 0;
 
     // Initialize
     this.init();
@@ -238,7 +242,8 @@ export class BeanstalkScene {
     const numRings = this.plant.ring.length;
 
     // Phase 1: Create leaves without game cases
-    for (let ringIndex = 4; ringIndex < numRings - 4; ringIndex += 12 + Math.floor(Math.random() * 7)) {
+    // Start at ring 20 so first game is visible in viewport on load
+    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 12 + Math.floor(Math.random() * 7)) {
       this.spawnLeafOnly(ringIndex);
     }
 
@@ -249,6 +254,9 @@ export class BeanstalkScene {
     for (const branch of this.branches) {
       this.spawnGameCaseOnLeaf(branch);
     }
+
+    // Initialize minGameIndex to 0 (first game is at bottom)
+    this.minGameIndex = 0;
   }
 
   spawnLeafOnly(ringIndex) {
@@ -312,24 +320,25 @@ export class BeanstalkScene {
     this.spawnGameCaseOnLeaf(branch);
   }
 
-  spawnGameCaseOnLeaf(branch) {
-    const gameIndex = this.nextGameIndex;
+  spawnGameCaseOnLeaf(branch, gameIndex = null) {
+    // Use provided gameIndex or default to nextGameIndex (for top spawning)
+    const useGameIndex = gameIndex !== null ? gameIndex : this.nextGameIndex;
 
     // Don't check totalCount here - we want to create placeholder cases
     // even before data arrives. setData() will update them later.
 
-    const item = this.items[gameIndex];
+    const item = this.items[useGameIndex];
     const game = item ? this.games[item.gameId] : null;
 
     // Request data if missing (but don't return - create placeholder case)
     if (!item) {
-      this.onRequestData(gameIndex);
+      this.onRequestData(useGameIndex);
     }
 
     // Always create game case - will show placeholder if no data yet
     const gameCase = this.gameCasePool.getObject();
     gameCase.setEnabled(true);
-    gameCase.setGame(game, item, gameIndex);
+    gameCase.setGame(game, item, useGameIndex);
 
     // Position in world space (not as child of branch)
     // Get the leaf's world position and offset from there
@@ -346,20 +355,86 @@ export class BeanstalkScene {
 
     // Store reference
     branch.gameCase = gameCase;
+    branch.gameIndex = useGameIndex;
     this.gameCases.push(gameCase);
 
-    this.nextGameIndex++;
+    // Update tracking indices only when using default top spawning
+    if (gameIndex === null) {
+      this.nextGameIndex++;
+    }
+  }
+
+  spawnLeafAtBottom() {
+    // Spawn a leaf at the bottom of the plant with a lower game index
+    const targetGameIndex = this.minGameIndex - 1;
+    if (targetGameIndex < 0) {
+      return; // Can't go below game 0
+    }
+
+    const branch = this.branchPool.getObject();
+    branch.setEnabled(true);
+    branch.getChildMeshes().forEach(child => child.setEnabled(true));
+
+    // Spawn at a low ring index (near bottom of plant)
+    const targetRingIndex = 4 + Math.floor(Math.random() * 5);
+    branch.ringIndex = targetRingIndex;
+
+    const facingLeft = this.swap;
+    this.swap = !this.swap;
+    branch.facingLeft = facingLeft;
+    branch.ringPoint = facingLeft ? 4 : 6;
+
+    const ringPos = this.plant.ring[Math.floor(targetRingIndex)][branch.ringPoint];
+    branch.position.copyFrom(ringPos);
+
+    // Start small and grow
+    branch.scaling.set(0.01, 0.01, 0.01);
+
+    branch.rotation.x = 0;
+    branch.rotation.y = facingLeft ? 180 * TO_RADIANS : 0;
+    branch.rotation.z = -15 * TO_RADIANS;
+
+    this.plant.addChild(branch);
+
+    // Insert at beginning of branches array (sorted by ring index, bottom first)
+    this.branches.unshift(branch);
+
+    // Spawn game case with the lower game index
+    this.spawnGameCaseOnLeaf(branch, targetGameIndex);
+
+    // Update minGameIndex
+    this.minGameIndex = targetGameIndex;
   }
 
   render() {
-    const climbVelocity = this.input.update();
+    let climbVelocity = this.input.update();
 
-    // Spawn leaves when climbing
+    // Clamp velocity when at game 0 to prevent scrolling past start
+    // Allow first game to reach middle of viewport before stopping
+    if (this.minGameIndex <= 0 && climbVelocity < 0) {
+      const lowestLeaf = this.branches[0];
+      // Allow scrolling until the first game reaches ~40% up the plant (near viewport center)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.4);
+      if (lowestLeaf && lowestLeaf.ringIndex >= middleThreshold) {
+        climbVelocity = Math.max(climbVelocity, 0);
+      }
+    }
+
+    // Spawn leaves when climbing UP
     if (climbVelocity > 0.1) {
       this.spawnCounter++;
       if (this.spawnCounter >= 50) {
         this.spawnCounter = 0;
         this.spawnLeaf();
+      }
+    }
+
+    // Spawn leaves when scrolling DOWN (only if we have lower games to show)
+    if (climbVelocity < -0.1 && this.minGameIndex > 0) {
+      this.spawnCounterDown++;
+      if (this.spawnCounterDown >= 50) {
+        this.spawnCounterDown = 0;
+        this.spawnLeafAtBottom();
       }
     }
 
@@ -416,10 +491,10 @@ export class BeanstalkScene {
         }
       }
 
-      // Grow leaves
+      // Grow leaves (use absolute velocity so they grow in both directions)
       const maxScale = 0.7;
       if (leaf.scaling.x < maxScale) {
-        const newScale = Math.min(leaf.scaling.x + 0.008 * Math.max(climbVelocity, 0), maxScale);
+        const newScale = Math.min(leaf.scaling.x + 0.008 * Math.abs(climbVelocity), maxScale);
         leaf.scaling.set(newScale, newScale, newScale);
       }
 
@@ -441,7 +516,7 @@ export class BeanstalkScene {
       }
     }
 
-    // Remove leaves past plant base
+    // Remove leaves past plant base (when scrolling up)
     while (this.branches.length > 0 && this.branches[0].ringIndex < 0) {
       const oldBranch = this.branches.shift();
       this.plant.removeChild(oldBranch);
@@ -461,6 +536,42 @@ export class BeanstalkScene {
       }
 
       this.branchPool.returnObject(oldBranch.poolId);
+
+      // Update minGameIndex to reflect what's still on screen
+      if (this.branches.length > 0 && this.branches[0].gameIndex !== undefined) {
+        this.minGameIndex = this.branches[0].gameIndex;
+      }
+    }
+
+    // Remove leaves past plant top (when scrolling down)
+    while (this.branches.length > 0 &&
+           this.branches[this.branches.length - 1].ringIndex >= this.plant.ring.length) {
+      const oldBranch = this.branches.pop();
+      this.plant.removeChild(oldBranch);
+      oldBranch.setEnabled(false);
+      oldBranch.getChildMeshes().forEach(child => child.setEnabled(false));
+
+      // Return game case to pool
+      if (oldBranch.gameCase) {
+        const caseIndex = this.gameCases.indexOf(oldBranch.gameCase);
+        if (caseIndex > -1) {
+          this.gameCases.splice(caseIndex, 1);
+        }
+        oldBranch.gameCase.setEnabled(false);
+        oldBranch.gameCase.mesh.parent = null;
+        this.gameCasePool.returnObject(oldBranch.gameCase.poolId);
+        oldBranch.gameCase = null;
+      }
+
+      this.branchPool.returnObject(oldBranch.poolId);
+
+      // Update nextGameIndex to reflect what's still on screen
+      if (this.branches.length > 0) {
+        const topBranch = this.branches[this.branches.length - 1];
+        if (topBranch.gameIndex !== undefined) {
+          this.nextGameIndex = topBranch.gameIndex + 1;
+        }
+      }
     }
 
     // Sky rotation
