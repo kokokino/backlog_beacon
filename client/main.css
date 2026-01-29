@@ -1527,6 +1527,7 @@ dialog article footer button {
 }
 
 .beanstalk-instructions p {
+  color: white;
   margin: 0.25rem 0;
   font-size: 0.875rem;
 }
@@ -1534,6 +1535,51 @@ dialog article footer button {
 @keyframes beanstalk-instructions-fade {
   0%, 60% { opacity: 1; }
   100% { opacity: 0; pointer-events: none; }
+}
+
+/* Beanstalk Scrollbar */
+.beanstalk-scrollbar {
+  position: absolute;
+  right: 1rem;
+  top: 5rem;
+  bottom: 5rem;
+  width: 20px;
+  pointer-events: auto;
+}
+
+.beanstalk-scrollbar-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.beanstalk-scrollbar-track:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.beanstalk-scrollbar.dragging .beanstalk-scrollbar-track {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.beanstalk-scrollbar-thumb {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  cursor: grab;
+  transition: background-color 0.15s;
+}
+
+.beanstalk-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.beanstalk-scrollbar.dragging .beanstalk-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.8);
+  cursor: grabbing;
 }
 
 /* Mobile */
@@ -1563,5 +1609,12 @@ dialog article footer button {
 
   .beanstalk-instructions p {
     font-size: 0.75rem;
+  }
+
+  .beanstalk-scrollbar {
+    right: 0.5rem;
+    top: 4rem;
+    bottom: 4rem;
+    width: 16px;
   }
 }

@@ -4,6 +4,7 @@
 
 import m from 'mithril';
 import { BeanstalkScene } from './BeanstalkScene.js';
+import { BeanstalkScrollbar } from './BeanstalkScrollbar.js';
 import { VIEW_MODES } from '../ViewModeSelector.js';
 import { PositionIndicator } from '../PositionIndicator.js';
 
@@ -90,7 +91,19 @@ export const BeanstalkView = {
         m('div.beanstalk-instructions', [
           m('p', 'Scroll or drag to climb'),
           m('p', 'Click a game to edit')
-        ])
+        ]),
+
+        // Scrollbar for quick navigation
+        totalCount > 0 && m(BeanstalkScrollbar, {
+          currentIndex: this.visibleStart - 1,  // Convert back to 0-indexed
+          visibleCount: Math.max(1, this.visibleEnd - this.visibleStart + 1),
+          totalCount: totalCount,
+          onSeek: (targetIndex) => {
+            if (this.scene) {
+              this.scene.scrollToIndex(targetIndex);
+            }
+          }
+        })
       ])
     ]);
   }

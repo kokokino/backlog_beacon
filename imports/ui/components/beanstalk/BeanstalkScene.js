@@ -722,6 +722,75 @@ export class BeanstalkScene {
   }
 
   /**
+   * Jump to a specific game index by recycling leaves and respawning
+   */
+  scrollToIndex(targetIndex) {
+    // Clamp target to valid range
+    targetIndex = Math.max(0, Math.min(targetIndex, this.totalCount - 1));
+
+    // Stop any momentum
+    if (this.input) {
+      this.input.setVelocity(0);
+    }
+
+    // Recycle all current leaves back to pool
+    while (this.branches.length > 0) {
+      const branch = this.branches.pop();
+      this.plant.removeChild(branch);
+      branch.setEnabled(false);
+      branch.getChildMeshes().forEach(child => child.setEnabled(false));
+
+      if (branch.gameCase) {
+        const caseIndex = this.gameCases.indexOf(branch.gameCase);
+        if (caseIndex > -1) {
+          this.gameCases.splice(caseIndex, 1);
+        }
+        branch.gameCase.setEnabled(false);
+        branch.gameCase.mesh.parent = null;
+        this.gameCasePool.returnObject(branch.gameCase.poolId);
+        branch.gameCase = null;
+      }
+
+      this.branchPool.returnObject(branch.poolId);
+    }
+
+    // Reset tracking state
+    this.minGameIndex = targetIndex;
+    this.nextGameIndex = targetIndex;
+    this.lastLeftRingIndex = -Infinity;
+    this.lastRightRingIndex = -Infinity;
+    this.lowestLeftRingIndex = Infinity;
+    this.lowestRightRingIndex = Infinity;
+    this.swap = false;
+    this.spawnCounter = 0;
+    this.spawnCounterDown = 0;
+
+    // Reset plant position
+    this.plant.position.y = -300;
+
+    // Spawn leaves around the target index
+    const numRings = this.plant.ring.length;
+    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
+      this.spawnLeafOnly(ringIndex);
+    }
+
+    // Sort by ring index
+    this.branches.sort((a, b) => a.ringIndex - b.ringIndex);
+
+    // Assign games sequentially starting from targetIndex
+    for (const branch of this.branches) {
+      const gameIndex = this.nextGameIndex;
+      if (gameIndex < this.totalCount) {
+        this.spawnGameCaseOnLeaf(branch, gameIndex);
+        this.nextGameIndex = gameIndex + 1;
+      }
+    }
+
+    // Update tracking
+    this.updateLeafTrackingFromBranches();
+  }
+
+  /**
    * Update data from Mithril component
    */
   setData(items, games, totalCount) {

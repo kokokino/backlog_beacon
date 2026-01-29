@@ -28,7 +28,7 @@ export const ViewModeSelector = {
           class: currentMode === VIEW_MODES.BEANSTALK ? 'selected' : 'outline',
           title: 'Explore your collection in 3D!',
           onclick: () => onModeChange(VIEW_MODES.BEANSTALK)
-        }, '3D')
+        }, 'Beanstalk')
       ])
     ]);
   }
