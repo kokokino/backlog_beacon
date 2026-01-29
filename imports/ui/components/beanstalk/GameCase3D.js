@@ -53,7 +53,7 @@ export function createGameCase(scene, textureCache) {
     height: CASE_HEIGHT,
     depth: CASE_DEPTH,
     faceUV: [
-      new BABYLON.Vector4(0, 0, 1, 1), // front - full cover texture
+      new BABYLON.Vector4(1, 1, 0, 0), // front - full cover texture (U and V flipped)
       new BABYLON.Vector4(0, 0, 0, 0), // back
       new BABYLON.Vector4(0, 0, 0, 0), // right
       new BABYLON.Vector4(0, 0, 0, 0), // left
@@ -67,6 +67,7 @@ export function createGameCase(scene, textureCache) {
   material.metallic = 0;
   material.roughness = 0.3;
   material.albedoColor = new BABYLON.Color3(0.9, 0.9, 0.9);
+  material.unlit = true;
 
   // Backface culling off for solid case
   material.backFaceCulling = false;
