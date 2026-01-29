@@ -298,15 +298,18 @@ export class BeanstalkScene {
     gameCase.setEnabled(true);
     gameCase.setGame(game, item, gameIndex);
 
-    // Position relative to leaf
-    const offset = branch.facingLeft ? -30 : 30;
-    gameCase.position.x = offset;
-    gameCase.position.y = 0;
-    gameCase.position.z = 0;
-    gameCase.scaling.set(1, 1, 1);
+    // Position in world space (not as child of branch)
+    // Get the leaf's world position and offset from there
+    const worldPos = branch.getAbsolutePosition();
+    const offset = branch.facingLeft ? -120 : 120;
+    gameCase.mesh.position.x = worldPos.x + offset;
+    gameCase.mesh.position.y = worldPos.y;
+    gameCase.mesh.position.z = worldPos.z - 30; // Toward camera (negative Z is toward camera)
 
-    // Parent to branch
-    gameCase.mesh.parent = branch;
+    // Scale up significantly for visibility
+    gameCase.mesh.scaling.set(4, 4, 4);
+
+    // Don't parent to branch - keep in world space for correct billboard rotation
 
     // Store reference
     branch.gameCase = gameCase;
@@ -394,6 +397,15 @@ export class BeanstalkScene {
         const newScale = Math.min(leaf.scaling.x + 0.008 * Math.max(climbVelocity, 0), maxScale);
         leaf.scaling.set(newScale, newScale, newScale);
       }
+
+      // Update game case position to follow the leaf
+      if (leaf.gameCase) {
+        const worldPos = leaf.getAbsolutePosition();
+        const offset = leaf.facingLeft ? -120 : 120;
+        leaf.gameCase.mesh.position.x = worldPos.x + offset;
+        leaf.gameCase.mesh.position.y = worldPos.y;
+        leaf.gameCase.mesh.position.z = worldPos.z - 30;
+      }
     }
 
     // Update game case billboards
@@ -419,7 +431,7 @@ export class BeanstalkScene {
         }
         oldBranch.gameCase.setEnabled(false);
         oldBranch.gameCase.mesh.parent = null;
-        this.gameCasePool.returnObject(oldBranch.gameCase.mesh.poolId);
+        this.gameCasePool.returnObject(oldBranch.gameCase.poolId);
         oldBranch.gameCase = null;
       }
 
