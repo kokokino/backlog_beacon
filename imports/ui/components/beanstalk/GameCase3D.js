@@ -53,8 +53,8 @@ export function createGameCase(scene, textureCache) {
     height: CASE_HEIGHT,
     depth: CASE_DEPTH,
     faceUV: [
-      new BABYLON.Vector4(0, 0, 0, 0), // back
       new BABYLON.Vector4(0, 0, 1, 1), // front - full cover texture
+      new BABYLON.Vector4(0, 0, 0, 0), // back
       new BABYLON.Vector4(0, 0, 0, 0), // right
       new BABYLON.Vector4(0, 0, 0, 0), // left
       new BABYLON.Vector4(0, 0, 0, 0), // top
