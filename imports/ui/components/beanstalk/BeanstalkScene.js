@@ -255,7 +255,7 @@ export class BeanstalkScene {
 
     // Phase 1: Create leaves without game cases
     // Start at ring 20 so first game is visible in viewport on load
-    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 12 + Math.floor(Math.random() * 7)) {
+    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
       this.spawnLeafOnly(ringIndex);
     }
 
@@ -505,7 +505,7 @@ export class BeanstalkScene {
     // Spawn leaves when climbing UP
     if (climbVelocity > 0.1) {
       this.spawnCounter++;
-      if (this.spawnCounter >= 50) {
+      if (this.spawnCounter >= 20 /*50*/) {
         this.spawnCounter = 0;
         this.spawnLeaf();
       }
@@ -514,7 +514,7 @@ export class BeanstalkScene {
     // Spawn leaves when scrolling DOWN (only if we have lower games to show)
     if (climbVelocity < -0.1 && this.minGameIndex > 0) {
       this.spawnCounterDown++;
-      if (this.spawnCounterDown >= 50) {
+      if (this.spawnCounterDown >= 20 /*50*/) {
         this.spawnCounterDown = 0;
         this.spawnLeafAtBottom();
       }
