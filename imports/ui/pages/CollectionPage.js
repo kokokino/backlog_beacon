@@ -623,7 +623,14 @@ const CollectionContent = {
         item: this.editingItem,
         game: this.games[this.editingItem.gameId],
         onClose: () => { this.editingItem = null; },
-        onSuccess: () => { this.editingItem = null; }
+        onSuccess: (itemId, updates) => {
+          // Update local item data so 3D view reflects changes
+          const index = this.items.findIndex(item => item._id === itemId);
+          if (index !== -1) {
+            Object.assign(this.items[index], updates);
+          }
+          this.editingItem = null;
+        }
       })
     ]);
   }

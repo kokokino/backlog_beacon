@@ -69,7 +69,7 @@ export const EditItemModal = {
     try {
       await Meteor.callAsync('collection.updateItem', item._id, updates);
       if (onSuccess) {
-        onSuccess();
+        onSuccess(item._id, updates);
       }
       if (onClose) {
         onClose();
