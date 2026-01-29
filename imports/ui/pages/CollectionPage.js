@@ -8,6 +8,7 @@ import { CollectionFilters } from '../components/CollectionFilters.js';
 import { ViewModeSelector, VIEW_MODES } from '../components/ViewModeSelector.js';
 import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
 import { PositionIndicator } from '../components/PositionIndicator.js';
+import { BeanstalkView } from '../components/beanstalk/BeanstalkView.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
@@ -130,9 +131,10 @@ const CollectionContent = {
     const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
 
     const isInfiniteMode = this.viewMode === VIEW_MODES.INFINITE;
+    const isBeanstalkMode = this.viewMode === VIEW_MODES.BEANSTALK;
 
-    // INFINITE MODE: Use method calls only (no subscription reactivity issues)
-    if (isInfiniteMode) {
+    // INFINITE/BEANSTALK MODE: Use method calls only (no subscription reactivity issues)
+    if (isInfiniteMode || isBeanstalkMode) {
       this.loadInitialInfiniteData();
       return;
     }
@@ -605,6 +607,16 @@ const CollectionContent = {
         end: this.visibleEnd || Math.min(24, this.totalCount),
         total: this.totalCount,
         loading: this.loadingMore
+      }),
+
+      // Beanstalk 3D mode
+      !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.BEANSTALK && this.totalCount > 0 && m(BeanstalkView, {
+        items: this.items,
+        games: this.games,
+        totalCount: this.totalCount,
+        onUpdateItem: (item) => { this.editingItem = item; },
+        onVisibleRangeChange: (start, end, loaded) => this.handleVisibleRangeChange(start, end, loaded),
+        onModeChange: (mode) => this.handleModeChange(mode)
       }),
 
       this.editingItem && m(EditItemModal, {

@@ -1381,6 +1381,10 @@ dialog article footer button {
   border-radius: var(--pico-border-radius) 0 0 var(--pico-border-radius);
 }
 
+.view-mode-buttons button:not(:first-child):not(:last-child) {
+  border-left: none;
+}
+
 .view-mode-buttons button:last-child {
   border-radius: 0 var(--pico-border-radius) var(--pico-border-radius) 0;
   border-left: none;
@@ -1453,6 +1457,81 @@ dialog article footer button {
   51%, 100% { opacity: 0; }
 }
 
+/* Beanstalk 3D View */
+.beanstalk-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #000;
+}
+
+.beanstalk-canvas {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  outline: none;
+}
+
+.beanstalk-canvas:active {
+  cursor: grabbing;
+}
+
+.beanstalk-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.beanstalk-exit-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--pico-border-radius);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.2s;
+}
+
+.beanstalk-exit-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.beanstalk-hud .position-indicator {
+  bottom: 2rem;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  pointer-events: auto;
+}
+
+.beanstalk-instructions {
+  position: absolute;
+  bottom: 5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--pico-border-radius);
+  text-align: center;
+  opacity: 1;
+  animation: beanstalk-instructions-fade 5s ease-out forwards;
+}
+
+.beanstalk-instructions p {
+  margin: 0.25rem 0;
+  font-size: 0.875rem;
+}
+
+@keyframes beanstalk-instructions-fade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; pointer-events: none; }
+}
+
 /* Mobile */
 @media (max-width: 768px) {
   .view-mode-selector {
@@ -1464,5 +1543,21 @@ dialog article footer button {
     padding: 0.375rem 0.75rem;
     font-size: 0.8rem;
     min-width: 160px;
+  }
+
+  .beanstalk-exit-btn {
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+  }
+
+  .beanstalk-instructions {
+    bottom: 4rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .beanstalk-instructions p {
+    font-size: 0.75rem;
   }
 }
