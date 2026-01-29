@@ -316,6 +316,10 @@ export class BeanstalkScene {
     branch.rotation.y = facingLeft ? 180 * TO_RADIANS : 0;
     branch.rotation.z = -15 * TO_RADIANS;
 
+    // Pre-populated leaves are already at full scale, so enable growth
+    branch.inViewport = true;
+    branch.growthEnabled = true;
+
     this.plant.addChild(branch);
     this.branches.push(branch);
   }
@@ -363,6 +367,10 @@ export class BeanstalkScene {
     branch.rotation.x = 0;
     branch.rotation.y = facingLeft ? 180 * TO_RADIANS : 0;
     branch.rotation.z = -15 * TO_RADIANS;
+
+    // New leaves wait for viewport before growing
+    branch.inViewport = false;
+    branch.growthEnabled = false;
 
     this.plant.addChild(branch);
     this.branches.push(branch);
@@ -456,6 +464,10 @@ export class BeanstalkScene {
     branch.rotation.x = 0;
     branch.rotation.y = facingLeft ? 180 * TO_RADIANS : 0;
     branch.rotation.z = -15 * TO_RADIANS;
+
+    // New leaves wait for viewport before growing
+    branch.inViewport = false;
+    branch.growthEnabled = false;
 
     this.plant.addChild(branch);
 
@@ -561,9 +573,15 @@ export class BeanstalkScene {
         }
       }
 
-      // Grow leaves (use absolute velocity so they grow in both directions)
+      // Check if leaf entered viewport - enable growth on first entry
+      if (!leaf.growthEnabled && this.isRingInViewport(leaf.ringIndex)) {
+        leaf.inViewport = true;
+        leaf.growthEnabled = true;
+      }
+
+      // Grow leaves only when growth is enabled (use absolute velocity so they grow in both directions)
       const maxScale = 0.7;
-      if (leaf.scaling.x < maxScale) {
+      if (leaf.growthEnabled && leaf.scaling.x < maxScale) {
         const newScale = Math.min(leaf.scaling.x + 0.008 * Math.abs(climbVelocity), maxScale);
         leaf.scaling.set(newScale, newScale, newScale);
       }
@@ -668,8 +686,22 @@ export class BeanstalkScene {
     // Calculate and report visible range
     this.updateVisibleRange();
 
+    // Start fairy lights once any game is visible in viewport
+    if (this.effects && !this.effects.fairyLightsActive) {
+      for (const branch of this.branches) {
+        if (branch.gameCase && this.isRingInViewport(branch.ringIndex)) {
+          this.effects.startFairyLights();
+          break;
+        }
+      }
+    }
+
     // Render
     this.scene.render();
+  }
+
+  isRingInViewport(ringIndex) {
+    return ringIndex >= 15 && ringIndex <= 75;
   }
 
   updateVisibleRange() {
