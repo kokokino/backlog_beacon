@@ -11,6 +11,7 @@ import { BeanstalkInput } from './BeanstalkInput.js';
 import { BeanstalkEffects } from './BeanstalkEffects.js';
 
 const TO_RADIANS = Math.PI / 180;
+const MIN_LEAF_SPACING = 4; //12; // Minimum ring indices between leaves on same side
 
 export class BeanstalkScene {
   constructor(canvas, options = {}) {
@@ -64,6 +65,10 @@ export class BeanstalkScene {
 
     // Spawn counters for both directions
     this.spawnCounterDown = 0;
+
+    // Track last leaf position on each side to prevent overlap
+    this.lastLeftRingIndex = -Infinity;
+    this.lastRightRingIndex = -Infinity;
 
     // Initialize
     this.init();
@@ -257,6 +262,24 @@ export class BeanstalkScene {
 
     // Initialize minGameIndex to 0 (first game is at bottom)
     this.minGameIndex = 0;
+
+    // Initialize tracking based on topmost leaves on each side
+    this.updateLeafTrackingFromBranches();
+  }
+
+  updateLeafTrackingFromBranches() {
+    // Reset tracking
+    this.lastLeftRingIndex = -Infinity;
+    this.lastRightRingIndex = -Infinity;
+
+    // Find the topmost leaf on each side
+    for (const branch of this.branches) {
+      if (branch.facingLeft) {
+        this.lastLeftRingIndex = Math.max(this.lastLeftRingIndex, branch.ringIndex);
+      } else {
+        this.lastRightRingIndex = Math.max(this.lastRightRingIndex, branch.ringIndex);
+      }
+    }
   }
 
   spawnLeafOnly(ringIndex) {
@@ -287,17 +310,34 @@ export class BeanstalkScene {
   }
 
   spawnLeaf(ringIndex, prePopulate = false) {
+    const targetRingIndex = ringIndex !== undefined ? ringIndex : this.plant.ring.length - 1;
+
+    // Check if we have enough spacing from the last leaf on this side
+    const facingLeft = this.swap;
+    const lastSameSideRingIndex = facingLeft ? this.lastLeftRingIndex : this.lastRightRingIndex;
+    const spacing = targetRingIndex - lastSameSideRingIndex;
+
+    if (spacing < MIN_LEAF_SPACING) {
+      // Not enough space on this side, skip spawning
+      return;
+    }
+
     const branch = this.branchPool.getObject();
     branch.setEnabled(true);
     branch.getChildMeshes().forEach(child => child.setEnabled(true));
 
-    const targetRingIndex = ringIndex !== undefined ? ringIndex : this.plant.ring.length - 1;
     branch.ringIndex = targetRingIndex;
 
-    const facingLeft = this.swap;
     this.swap = !this.swap;
     branch.facingLeft = facingLeft;
     branch.ringPoint = facingLeft ? 4 : 6;
+
+    // Update tracking for this side
+    if (facingLeft) {
+      this.lastLeftRingIndex = targetRingIndex;
+    } else {
+      this.lastRightRingIndex = targetRingIndex;
+    }
 
     const ringPos = this.plant.ring[Math.floor(targetRingIndex)][branch.ringPoint];
     branch.position.copyFrom(ringPos);
@@ -371,15 +411,32 @@ export class BeanstalkScene {
       return; // Can't go below game 0
     }
 
+    // Spawn at a low ring index (near bottom of plant)
+    const targetRingIndex = 4 + Math.floor(Math.random() * 5);
+
+    // Check if we have enough spacing from the lowest leaf on this side
+    const facingLeft = this.swap;
+
+    // Find the lowest existing leaf on the same side
+    let lowestSameSideRingIndex = Infinity;
+    for (const existingBranch of this.branches) {
+      if (existingBranch.facingLeft === facingLeft) {
+        lowestSameSideRingIndex = Math.min(lowestSameSideRingIndex, existingBranch.ringIndex);
+      }
+    }
+
+    const spacing = lowestSameSideRingIndex - targetRingIndex;
+    if (spacing < MIN_LEAF_SPACING) {
+      // Not enough space on this side, skip spawning
+      return;
+    }
+
     const branch = this.branchPool.getObject();
     branch.setEnabled(true);
     branch.getChildMeshes().forEach(child => child.setEnabled(true));
 
-    // Spawn at a low ring index (near bottom of plant)
-    const targetRingIndex = 4 + Math.floor(Math.random() * 5);
     branch.ringIndex = targetRingIndex;
 
-    const facingLeft = this.swap;
     this.swap = !this.swap;
     branch.facingLeft = facingLeft;
     branch.ringPoint = facingLeft ? 4 : 6;
@@ -541,6 +598,9 @@ export class BeanstalkScene {
       if (this.branches.length > 0 && this.branches[0].gameIndex !== undefined) {
         this.minGameIndex = this.branches[0].gameIndex;
       }
+
+      // Update leaf tracking after removal
+      this.updateLeafTrackingFromBranches();
     }
 
     // Remove leaves past plant top (when scrolling down)
@@ -572,6 +632,9 @@ export class BeanstalkScene {
           this.nextGameIndex = topBranch.gameIndex + 1;
         }
       }
+
+      // Update leaf tracking after removal
+      this.updateLeafTrackingFromBranches();
     }
 
     // Sky rotation
