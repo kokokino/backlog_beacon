@@ -315,20 +315,18 @@ export class BeanstalkScene {
   spawnGameCaseOnLeaf(branch) {
     const gameIndex = this.nextGameIndex;
 
-    if (gameIndex >= this.totalCount) {
-      return;
-    }
+    // Don't check totalCount here - we want to create placeholder cases
+    // even before data arrives. setData() will update them later.
 
     const item = this.items[gameIndex];
     const game = item ? this.games[item.gameId] : null;
 
+    // Request data if missing (but don't return - create placeholder case)
     if (!item) {
-      // Request data for this range
       this.onRequestData(gameIndex);
-      return;
     }
 
-    // Get or create game case
+    // Always create game case - will show placeholder if no data yet
     const gameCase = this.gameCasePool.getObject();
     gameCase.setEnabled(true);
     gameCase.setGame(game, item, gameIndex);
