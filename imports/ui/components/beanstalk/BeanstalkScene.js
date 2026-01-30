@@ -20,6 +20,7 @@ export class BeanstalkScene {
     this.onGameSelect = options.onGameSelect || (() => {});
     this.onVisibleRangeChange = options.onVisibleRangeChange || (() => {});
     this.onRequestData = options.onRequestData || (() => {});
+    this.onRoosterVisibilityChange = options.onRoosterVisibilityChange || (() => {});
 
     // Babylon.js core
     this.engine = null;
@@ -282,6 +283,19 @@ export class BeanstalkScene {
       }
     }
 
+    // Create dirt mound to hide stalk ring transitions
+    this.roosterDirt = BABYLON.MeshBuilder.CreateCylinder('roosterDirt', {
+      height: 30,
+      diameterTop: 35,
+      diameterBottom: 50,
+      tessellation: 12
+    }, this.scene);
+    const dirtMaterial = new BABYLON.StandardMaterial('dirtMaterial', this.scene);
+    dirtMaterial.diffuseColor = new BABYLON.Color3(0.45, 0.3, 0.15);
+    dirtMaterial.emissiveColor = new BABYLON.Color3(0.25, 0.15, 0.08);
+    this.roosterDirt.material = dirtMaterial;
+    this.roosterDirt.parent = this.plant.mesh;
+    this.roosterDirt.setEnabled(false);
 
     // Stop all animations initially
     this.roosterAnimations.forEach(anim => anim.stop());
@@ -293,7 +307,11 @@ export class BeanstalkScene {
     }
 
     this.rooster.setEnabled(true);
+    if (this.roosterDirt) {
+      this.roosterDirt.setEnabled(true);
+    }
     this.roosterVisible = true;
+    this.onRoosterVisibilityChange(true);
 
     if (this.roosterAnimations && this.roosterAnimations.length > 0) {
       // Find eat animation
@@ -336,7 +354,11 @@ export class BeanstalkScene {
     }
 
     this.rooster.setEnabled(false);
+    if (this.roosterDirt) {
+      this.roosterDirt.setEnabled(false);
+    }
     this.roosterVisible = false;
+    this.onRoosterVisibilityChange(false);
 
     if (this.roosterAnimInterval) {
       clearInterval(this.roosterAnimInterval);
@@ -689,26 +711,47 @@ export class BeanstalkScene {
     // Cut the stalk and position rooster on top when visible
     if (this.rooster && this.roosterVisible && this.branches.length > 0) {
       const highestLeaf = this.branches[this.branches.length - 1];
-      const roosterRingIndex = Math.min(
-        Math.floor(highestLeaf.ringIndex) + 3,
+      const leafRingIdx = Math.min(
+        Math.floor(highestLeaf.ringIndex),
         this.plant.ring.length - 1
       );
 
-      // Collapse all rings above the rooster position to create "cut" effect
-      const cutPos = this.plant.ring[roosterRingIndex][5];
-      for (let ringIndex = roosterRingIndex + 1; ringIndex < this.plant.ring.length; ringIndex++) {
-        for (let vertexIndex = 0; vertexIndex < this.plant.ring[ringIndex].length; vertexIndex++) {
-          this.plant.ring[ringIndex][vertexIndex].copyFrom(cutPos);
-        }
+      // Get stalk center at this ring (0,0 + animation offset)
+      const stalkCenterX = this.plant.offsetPoints[leafRingIdx].x;
+      const stalkCenterY = this.plant.offsetPoints[leafRingIdx].y;
+
+      // Position dirt mound to hide ring transitions
+      const dirtOffset = 20;
+      if (this.roosterDirt) {
+        this.roosterDirt.position.x = stalkCenterX;
+        this.roosterDirt.position.y = stalkCenterY;
+        this.roosterDirt.position.z = highestLeaf.position.z + dirtOffset;
+        // Rotate so cylinder points along Z axis (stalk direction)
+        this.roosterDirt.rotation.x = 90 * TO_RADIANS;
       }
 
-      // Position rooster on top of the stalk, facing right
-      this.rooster.position.copyFrom(cutPos);
+      // Position rooster on top of dirt (dirt height is 30, so top is at dirtOffset + 15)
+      // Offset rooster slightly right (positive X) since it faces left
+      this.rooster.position.x = stalkCenterX + 12;
+      this.rooster.position.y = stalkCenterY;
+      this.rooster.position.z = highestLeaf.position.z + dirtOffset + 15;
       this.rooster.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(
         0,
         -90 * TO_RADIANS,
         -90 * TO_RADIANS
       );
+
+      // Collapse rings into the dirt mound
+      const roosterRingIndex = Math.floor(highestLeaf.ringIndex) + 2;
+      for (let ringIndex = roosterRingIndex; ringIndex < this.plant.ring.length; ringIndex++) {
+        for (let vertexIndex = 0; vertexIndex < this.plant.ring[ringIndex].length; vertexIndex++) {
+          this.plant.ring[ringIndex][vertexIndex].set(
+            this.roosterDirt ? this.roosterDirt.position.x : this.rooster.position.x,
+            this.roosterDirt ? this.roosterDirt.position.y : this.rooster.position.y,
+            this.roosterDirt ? this.roosterDirt.position.z : this.rooster.position.z
+          );
+        }
+      }
     }
 
     this.plant.updateVertices();

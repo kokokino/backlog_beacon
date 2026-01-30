@@ -13,6 +13,7 @@ export const BeanstalkView = {
     this.scene = null;
     this.visibleStart = 1;
     this.visibleEnd = 1;
+    this.roosterVisible = false;
   },
 
   oncreate(vnode) {
@@ -43,6 +44,10 @@ export const BeanstalkView = {
           const endIndex = Math.min(fromIndex + 100, vnode.attrs.totalCount);
           vnode.attrs.onVisibleRangeChange(fromIndex, endIndex, vnode.attrs.items.length);
         }
+      },
+      onRoosterVisibilityChange: (visible) => {
+        this.roosterVisible = visible;
+        m.redraw();
       }
     });
 
@@ -103,7 +108,14 @@ export const BeanstalkView = {
               this.scene.scrollToIndex(targetIndex);
             }
           }
-        })
+        }),
+
+        // Rooster model attribution (only shown when rooster is visible)
+        this.roosterVisible && m('a.beanstalk-attribution', {
+          href: 'https://sketchfab.com/Enkarra',
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }, 'Rooster by Enkarra')
       ])
     ]);
   }
