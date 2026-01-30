@@ -496,8 +496,8 @@ export class BeanstalkScene {
     // Allow first game to reach middle of viewport before stopping
     if (this.minGameIndex <= 0 && climbVelocity < 0) {
       const lowestLeaf = this.branches[0];
-      // Allow scrolling until the first game reaches ~40% up the plant (near viewport center)
-      const middleThreshold = Math.floor(this.plant.ring.length * 0.4);
+      // Allow scrolling until the first game reaches ~30% up the plant (keeps it in viewport)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.2);
       if (lowestLeaf && lowestLeaf.ringIndex >= middleThreshold) {
         climbVelocity = Math.max(climbVelocity, 0);
       }
