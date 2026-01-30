@@ -473,16 +473,17 @@ export class BeanstalkScene {
   }
 
   spawnLeaf(ringIndex, prePopulate = false) {
-    const targetRingIndex = ringIndex !== undefined ? ringIndex : this.plant.ring.length - 1;
+    // Add some variation to spawn position for natural spacing
+    const baseRing = ringIndex !== undefined ? ringIndex : this.plant.ring.length - 5;
+    const targetRingIndex = baseRing + Math.floor(Math.random() * 4);
 
-    // Check if we have enough spacing from the last leaf on this side
     const facingLeft = this.swap;
-    const lastSameSideRingIndex = facingLeft ? this.lastLeftRingIndex : this.lastRightRingIndex;
-    const spacing = targetRingIndex - lastSameSideRingIndex;
 
-    if (spacing < MIN_LEAF_SPACING) {
-      // Not enough space on this side, skip spawning
-      return;
+    // Check spacing from existing leaves to avoid overlap
+    for (const branch of this.branches) {
+      if (branch.facingLeft === facingLeft && Math.abs(branch.ringIndex - targetRingIndex) < MIN_LEAF_SPACING) {
+        return; // Too close to existing leaf on same side
+      }
     }
 
     const branch = this.branchPool.getObject();
@@ -581,16 +582,13 @@ export class BeanstalkScene {
     // Spawn at a low ring index (near bottom of plant)
     const targetRingIndex = 4 + Math.floor(Math.random() * 5);
 
-    // Check if we have enough spacing from the lowest leaf on this side
     const facingLeft = this.swap;
 
-    // Use cached lowest ring index instead of O(n) loop
-    const lowestSameSideRingIndex = facingLeft ? this.lowestLeftRingIndex : this.lowestRightRingIndex;
-
-    const spacing = lowestSameSideRingIndex - targetRingIndex;
-    if (spacing < MIN_LEAF_SPACING) {
-      // Not enough space on this side, skip spawning
-      return;
+    // Check spacing from existing leaves to avoid overlap
+    for (const branch of this.branches) {
+      if (branch.facingLeft === facingLeft && Math.abs(branch.ringIndex - targetRingIndex) < MIN_LEAF_SPACING) {
+        return; // Too close to existing leaf on same side
+      }
     }
 
     const branch = this.branchPool.getObject();
@@ -664,7 +662,7 @@ export class BeanstalkScene {
     // Spawn leaves when climbing UP - only if we have more games
     if (climbVelocity > 0.1 && this.nextGameIndex < this.totalCount) {
       this.spawnCounter++;
-      if (this.spawnCounter >= 20 /*50*/) {
+      if (this.spawnCounter >= 10) {
         this.spawnCounter = 0;
         this.spawnLeaf();
       }
@@ -673,7 +671,7 @@ export class BeanstalkScene {
     // Spawn leaves when scrolling DOWN (only if we have lower games to show)
     if (climbVelocity < -0.1 && this.minGameIndex > 0) {
       this.spawnCounterDown++;
-      if (this.spawnCounterDown >= 20 /*50*/) {
+      if (this.spawnCounterDown >= 10) {
         this.spawnCounterDown = 0;
         this.spawnLeafAtBottom();
       }
