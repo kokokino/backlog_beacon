@@ -3,6 +3,7 @@
  */
 
 import * as BABYLON from '@babylonjs/core';
+import '@babylonjs/loaders/glTF';
 import { BeanstalkPlant } from './BeanstalkPlant.js';
 import { LeafData, createLeafMesh } from './LeafData.js';
 import { ObjectPool, TextureCache, AnimationManager, Tween, Easing } from './BeanstalkPool.js';
@@ -77,6 +78,12 @@ export class BeanstalkScene {
     // Reusable temp vector to avoid allocations in render loop
     this._tempPos = new BABYLON.Vector3();
 
+    // Rooster at top
+    this.rooster = null;
+    this.roosterAnimations = null;
+    this.roosterVisible = false;
+    this.roosterAnimInterval = null;
+
     // Initialize
     this.init();
   }
@@ -87,6 +94,7 @@ export class BeanstalkScene {
     this.initObjects();
     this.initInput();
     this.initEffects();
+    await this.initRooster();
     this.initStartAnim();
 
     // Start render loop
@@ -221,6 +229,86 @@ export class BeanstalkScene {
   initEffects() {
     this.effects = new BeanstalkEffects(this.scene);
     this.effects.init(this.plant.mesh);
+  }
+
+  async initRooster() {
+    const result = await BABYLON.SceneLoader.ImportMeshAsync(
+      '',
+      '/models/',
+      'rooster.glb',
+      this.scene
+    );
+
+    this.rooster = result.meshes[0];
+    this.roosterAnimations = result.animationGroups;
+
+    // Initial setup - hidden, scaled, positioned
+    this.rooster.setEnabled(false);
+    this.rooster.scaling.setAll(60);
+    this.rooster.parent = this.plant.mesh;
+
+    // Make rooster unlit so colors show fully
+    for (const mesh of result.meshes) {
+      if (mesh.material) {
+        mesh.material.unlit = true;
+      }
+    }
+
+
+    // Stop all animations initially
+    this.roosterAnimations.forEach(anim => anim.stop());
+  }
+
+  showRooster() {
+    if (!this.rooster || this.roosterVisible) {
+      return;
+    }
+
+    this.rooster.setEnabled(true);
+    this.roosterVisible = true;
+
+    if (this.roosterAnimations && this.roosterAnimations.length > 0) {
+      // Find eat animation
+      const eatAnim = this.roosterAnimations.find(anim =>
+        anim.name.toLowerCase().includes('eat')
+      ) || this.roosterAnimations[0];
+
+      // Alternate between standing (paused) and eating every 3 seconds
+      let isEating = false;
+      const toggleEating = () => {
+        isEating = !isEating;
+        if (isEating) {
+          eatAnim.play(true);
+        } else {
+          eatAnim.pause();
+          eatAnim.goToFrame(0);
+        }
+      };
+
+      // Start with standing (paused)
+      eatAnim.goToFrame(0);
+      eatAnim.pause();
+
+      this.roosterAnimInterval = setInterval(toggleEating, 3000);
+    }
+  }
+
+  hideRooster() {
+    if (!this.rooster || !this.roosterVisible) {
+      return;
+    }
+
+    this.rooster.setEnabled(false);
+    this.roosterVisible = false;
+
+    if (this.roosterAnimInterval) {
+      clearInterval(this.roosterAnimInterval);
+      this.roosterAnimInterval = null;
+    }
+
+    if (this.roosterAnimations) {
+      this.roosterAnimations.forEach(anim => anim.stop());
+    }
   }
 
   initStartAnim() {
@@ -504,11 +592,11 @@ export class BeanstalkScene {
     }
 
     // Clamp velocity when at last game to prevent scrolling past end
-    // Allow last game to reach middle of viewport before stopping
+    // Allow last game to scroll down so rooster is fully visible
     if (this.nextGameIndex >= this.totalCount && this.totalCount > 0 && climbVelocity > 0) {
       const highestLeaf = this.branches[this.branches.length - 1];
-      // Allow scrolling until the last game reaches ~60% up the plant (near viewport center)
-      const middleThreshold = Math.floor(this.plant.ring.length * 0.6);
+      // Allow scrolling until the last game reaches ~40% up the plant (rooster visible above)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.5);
       if (highestLeaf && highestLeaf.ringIndex <= middleThreshold) {
         climbVelocity = Math.min(climbVelocity, 0);
       }
@@ -559,6 +647,31 @@ export class BeanstalkScene {
         this._tempPos.addInPlace(this.plant.offsetPoints[ringIndex]);
         this.plant.ring[ringIndex][vertexIndex].copyFrom(this._tempPos);
       }
+    }
+
+    // Cut the stalk and position rooster on top when visible
+    if (this.rooster && this.roosterVisible && this.branches.length > 0) {
+      const highestLeaf = this.branches[this.branches.length - 1];
+      const roosterRingIndex = Math.min(
+        Math.floor(highestLeaf.ringIndex) + 3,
+        this.plant.ring.length - 1
+      );
+
+      // Collapse all rings above the rooster position to create "cut" effect
+      const cutPos = this.plant.ring[roosterRingIndex][5];
+      for (let ringIndex = roosterRingIndex + 1; ringIndex < this.plant.ring.length; ringIndex++) {
+        for (let vertexIndex = 0; vertexIndex < this.plant.ring[ringIndex].length; vertexIndex++) {
+          this.plant.ring[ringIndex][vertexIndex].copyFrom(cutPos);
+        }
+      }
+
+      // Position rooster on top of the stalk, facing right
+      this.rooster.position.copyFrom(cutPos);
+      this.rooster.rotationQuaternion = BABYLON.Quaternion.FromEulerAngles(
+        0,
+        -90 * TO_RADIANS,
+        -90 * TO_RADIANS
+      );
     }
 
     this.plant.updateVertices();
@@ -716,6 +829,17 @@ export class BeanstalkScene {
       this.updateLeafTrackingFromBranches();
     }
 
+    // Show rooster when at the last game
+    const shouldShowRooster = this.nextGameIndex >= this.totalCount && this.totalCount > 0;
+
+    if (shouldShowRooster && !this.roosterVisible) {
+      this.showRooster();
+    }
+
+    if (!shouldShowRooster && this.roosterVisible) {
+      this.hideRooster();
+    }
+
     // Sky rotation
     if (this.skyDome) {
       this.skyDome.rotation.y += 0.002;
@@ -830,6 +954,11 @@ export class BeanstalkScene {
       }
     }
 
+    // If at end of collection, move plant down to give rooster breathing room
+    if (this.nextGameIndex >= this.totalCount) {
+      this.plant.position.y = -500;
+    }
+
     // Update tracking
     this.updateLeafTrackingFromBranches();
   }
@@ -860,6 +989,15 @@ export class BeanstalkScene {
     }
     if (this.effects) {
       this.effects.dispose();
+    }
+    if (this.roosterAnimInterval) {
+      clearInterval(this.roosterAnimInterval);
+    }
+    if (this.rooster) {
+      this.rooster.dispose();
+    }
+    if (this.roosterAnimations) {
+      this.roosterAnimations.forEach(anim => anim.dispose());
     }
     if (this.branchPool) {
       this.branchPool.dispose();
