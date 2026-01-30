@@ -585,8 +585,10 @@ export class BeanstalkScene {
         }
       }
 
-      // Check if leaf entered viewport - enable growth on first entry
-      if (!leaf.growthEnabled && this.isRingInViewport(leaf.ringIndex)) {
+      // Check if leaf entered growth zone
+      // When scrolling down: start at ring 5 (below viewport) so leaves grow before entering
+      // When scrolling up: start at ring 75 (top of viewport) so leaves grow as they enter
+      if (!leaf.growthEnabled && leaf.ringIndex >= 5 && leaf.ringIndex <= 65) {
         leaf.inViewport = true;
         leaf.growthEnabled = true;
       }
