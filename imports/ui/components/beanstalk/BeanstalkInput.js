@@ -3,8 +3,8 @@
  */
 
 const CLIMB_FRICTION = 0.95;
-const CLIMB_MIN = -0.5;
-const CLIMB_MAX = 3.0;
+const CLIMB_MIN = -4.0;
+const CLIMB_MAX = 4.0;
 const SCROLL_SENSITIVITY = 0.03;
 const DRAG_SENSITIVITY = 0.2;
 
