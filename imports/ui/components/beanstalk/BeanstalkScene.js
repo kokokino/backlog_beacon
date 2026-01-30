@@ -621,8 +621,8 @@ export class BeanstalkScene {
     // Allow first game to reach middle of viewport before stopping
     if (this.minGameIndex <= 0 && climbVelocity < 0) {
       const lowestLeaf = this.branches[0];
-      // Allow scrolling until the first game reaches ~30% up the plant (keeps it in viewport)
-      const middleThreshold = Math.floor(this.plant.ring.length * 0.2);
+      // Allow scrolling until the first game reaches ~45% up the plant (keeps it in viewport)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.45);
       if (lowestLeaf && lowestLeaf.ringIndex >= middleThreshold) {
         climbVelocity = Math.max(climbVelocity, 0);
       }
@@ -632,8 +632,8 @@ export class BeanstalkScene {
     // Allow last game to scroll down so rooster is fully visible
     if (this.nextGameIndex >= this.totalCount && this.totalCount > 0 && climbVelocity > 0) {
       const highestLeaf = this.branches[this.branches.length - 1];
-      // Allow scrolling until the last game reaches ~40% up the plant (rooster visible above)
-      const middleThreshold = Math.floor(this.plant.ring.length * 0.5);
+      // Allow scrolling until the last game reaches ~38% up the plant (rooster visible above)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.38);
       if (highestLeaf && highestLeaf.ringIndex <= middleThreshold) {
         climbVelocity = Math.min(climbVelocity, 0);
       }
