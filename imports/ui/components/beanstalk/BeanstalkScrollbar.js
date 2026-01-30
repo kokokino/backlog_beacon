@@ -11,6 +11,9 @@ export const BeanstalkScrollbar = {
   },
 
   oncreate(vnode) {
+    if (!vnode.dom) {
+      return;
+    }
     this.trackElement = vnode.dom.querySelector('.beanstalk-scrollbar-track');
 
     // Bind methods for event listeners
@@ -23,8 +26,12 @@ export const BeanstalkScrollbar = {
   },
 
   onremove(vnode) {
-    document.removeEventListener('pointermove', this.onPointerMove);
-    document.removeEventListener('pointerup', this.onPointerUp);
+    if (this.onPointerMove) {
+      document.removeEventListener('pointermove', this.onPointerMove);
+    }
+    if (this.onPointerUp) {
+      document.removeEventListener('pointerup', this.onPointerUp);
+    }
   },
 
   handlePointerDown(vnode, event) {
