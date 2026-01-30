@@ -271,23 +271,32 @@ export class BeanstalkScene {
       // Find eat animation
       const eatAnim = this.roosterAnimations.find(anim =>
         anim.name.toLowerCase().includes('eat')
-      ) || this.roosterAnimations[0];
+      );
 
-      // Alternate between standing (paused) and eating every 3 seconds
-      let isEating = false;
-      const toggleEating = () => {
-        isEating = !isEating;
-        if (isEating) {
-          eatAnim.play(true);
-        } else {
-          eatAnim.pause();
-          eatAnim.goToFrame(0);
+      // Get skeleton for rest pose
+      const skeleton = this.scene.skeletons[0];
+
+      // Helper to set default standing pose
+      const setStandingPose = () => {
+        this.roosterAnimations.forEach(anim => anim.stop());
+        if (skeleton) {
+          skeleton.returnToRest();
         }
       };
 
-      // Start with standing (paused)
-      eatAnim.goToFrame(0);
-      eatAnim.pause();
+      // Alternate between standing and eating every 3 seconds
+      let isEating = false;
+      const toggleEating = () => {
+        isEating = !isEating;
+        if (isEating && eatAnim) {
+          eatAnim.play(true);
+        } else {
+          setStandingPose();
+        }
+      };
+
+      // Start with default standing pose
+      setStandingPose();
 
       this.roosterAnimInterval = setInterval(toggleEating, 3000);
     }
