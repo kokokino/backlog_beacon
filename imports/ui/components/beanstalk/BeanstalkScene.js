@@ -103,7 +103,8 @@ export class BeanstalkScene {
     this.scene.clearColor = new BABYLON.Color3(0.6, 0.6, 0.6);
 
     // Camera
-    this.camera = new BABYLON.FreeCamera('camera', new BABYLON.Vector3(0, 0, -400), this.scene);
+    const cameraDistance = -400;
+    this.camera = new BABYLON.FreeCamera('camera', new BABYLON.Vector3(0, 0, cameraDistance), this.scene);
     this.camera.fov = 55 * TO_RADIANS;
     this.camera.minZ = 1;
     this.camera.maxZ = 10000;
@@ -502,8 +503,19 @@ export class BeanstalkScene {
       }
     }
 
-    // Spawn leaves when climbing UP
-    if (climbVelocity > 0.1) {
+    // Clamp velocity when at last game to prevent scrolling past end
+    // Allow last game to reach middle of viewport before stopping
+    if (this.nextGameIndex >= this.totalCount && this.totalCount > 0 && climbVelocity > 0) {
+      const highestLeaf = this.branches[this.branches.length - 1];
+      // Allow scrolling until the last game reaches ~60% up the plant (near viewport center)
+      const middleThreshold = Math.floor(this.plant.ring.length * 0.6);
+      if (highestLeaf && highestLeaf.ringIndex <= middleThreshold) {
+        climbVelocity = Math.min(climbVelocity, 0);
+      }
+    }
+
+    // Spawn leaves when climbing UP - only if we have more games
+    if (climbVelocity > 0.1 && this.nextGameIndex < this.totalCount) {
       this.spawnCounter++;
       if (this.spawnCounter >= 20 /*50*/) {
         this.spawnCounter = 0;
@@ -669,6 +681,31 @@ export class BeanstalkScene {
 
     // Update leaf tracking once after all removals
     if (removedAny) {
+      this.updateLeafTrackingFromBranches();
+    }
+
+    // Remove leaves above the last game when we've reached the end
+    if (this.nextGameIndex >= this.totalCount && this.totalCount > 0) {
+      for (let leafIndex = this.branches.length - 1; leafIndex >= 0; leafIndex--) {
+        const branch = this.branches[leafIndex];
+        // Remove leaves that have no game case (decorative leaves above last game)
+        if (!branch.gameCase || branch.gameIndex >= this.totalCount) {
+          this.branches.splice(leafIndex, 1);
+          this.plant.removeChild(branch);
+          branch.setEnabled(false);
+          branch.getChildMeshes().forEach(child => child.setEnabled(false));
+
+          if (branch.gameCase) {
+            const caseIndex = this.gameCases.indexOf(branch.gameCase);
+            if (caseIndex > -1) {
+              this.gameCases.splice(caseIndex, 1);
+            }
+            branch.gameCase.setEnabled(false);
+            this.gameCasePool.returnObject(branch.gameCase.poolId);
+          }
+          this.branchPool.returnObject(branch.poolId);
+        }
+      }
       this.updateLeafTrackingFromBranches();
     }
 
