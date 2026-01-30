@@ -15,7 +15,7 @@ export class BeanstalkPlant {
     this.radius = radius;
     this.initialRadius = radius;
 
-    this.totalLinks = 90;
+    this.totalLinks = 110;
     this.linkDist = 20;
 
     // Ring data arrays
@@ -46,7 +46,7 @@ export class BeanstalkPlant {
 
     // Base and branch points
     this.basePoint = new BABYLON.Vector3(0, 0, 0);
-    this.branchPoint = new BABYLON.Vector3(0, 0, -50);
+    this.branchPoint = new BABYLON.Vector3(0, 0, -450);
   }
 
   build() {
@@ -64,7 +64,7 @@ export class BeanstalkPlant {
     this.numCurrentPos = 0;
     this.radius = this.initialRadius;
     this.basePoint.set(0, 0, 0);
-    this.branchPoint.set(0, 0, -50);
+    this.branchPoint.set(0, 0, -450);
 
     let indexOffset = 0;
 

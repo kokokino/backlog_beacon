@@ -380,8 +380,8 @@ export class BeanstalkScene {
     const numRings = this.plant.ring.length;
 
     // Phase 1: Create leaves without game cases
-    // Start at ring 20 so first game is visible in viewport on load
-    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
+    // Start at ring 40 so first game is visible in viewport on load
+    for (let ringIndex = 40; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
       this.spawnLeafOnly(ringIndex);
     }
 
@@ -736,9 +736,9 @@ export class BeanstalkScene {
       }
 
       // Check if leaf entered growth zone
-      // When scrolling down: start at ring 5 (below viewport) so leaves grow before entering
-      // When scrolling up: start at ring 75 (top of viewport) so leaves grow as they enter
-      if (!leaf.growthEnabled && leaf.ringIndex >= 5 && leaf.ringIndex <= 65) {
+      // When scrolling down: start at ring 25 (below viewport) so leaves grow before entering
+      // When scrolling up: start at ring 85 (top of viewport) so leaves grow as they enter
+      if (!leaf.growthEnabled && leaf.ringIndex >= 25 && leaf.ringIndex <= 85) {
         leaf.inViewport = true;
         leaf.growthEnabled = true;
       }
@@ -906,7 +906,7 @@ export class BeanstalkScene {
   }
 
   isRingInViewport(ringIndex) {
-    return ringIndex >= 15 && ringIndex <= 75;
+    return ringIndex >= 35 && ringIndex <= 95;
   }
 
   updateVisibleRange() {
@@ -975,7 +975,7 @@ export class BeanstalkScene {
 
     // Spawn leaves around the target index
     const numRings = this.plant.ring.length;
-    for (let ringIndex = 20; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
+    for (let ringIndex = 40; ringIndex < numRings - 4; ringIndex += 4 + Math.floor(Math.random() * 3)) {
       this.spawnLeafOnly(ringIndex);
     }
 
