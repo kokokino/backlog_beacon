@@ -601,9 +601,14 @@ export class BeanstalkScene {
       }
 
       // Update game case position to follow the leaf
+      // Offset scales with leaf growth - games start close to stalk and get "pushed out"
       if (leaf.gameCase) {
         const worldPos = leaf.getAbsolutePosition();
-        const offset = leaf.facingLeft ? -120 : 120;
+        const growthProgress = Math.min(leaf.scaling.x / maxScale, 1);
+        const minOffset = 30;
+        const maxOffset = 120;
+        const currentOffset = minOffset + (maxOffset - minOffset) * growthProgress;
+        const offset = leaf.facingLeft ? -currentOffset : currentOffset;
         leaf.gameCase.mesh.position.x = worldPos.x + offset;
         leaf.gameCase.mesh.position.y = worldPos.y;
         leaf.gameCase.mesh.position.z = worldPos.z - 30;
