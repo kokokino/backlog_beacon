@@ -110,14 +110,16 @@ export class BeanstalkScene {
     this.scene = new BABYLON.Scene(this.engine);
     this.scene.clearColor = new BABYLON.Color3(0.6, 0.6, 0.6);
 
-    // Camera
-    const cameraDistance = -400;
-    this.camera = new BABYLON.FreeCamera('camera', new BABYLON.Vector3(0, 0, cameraDistance), this.scene);
+    // Camera - initial distance will be set by updateCameraForViewport()
+    this.camera = new BABYLON.FreeCamera('camera', new BABYLON.Vector3(0, 0, -400), this.scene);
     this.camera.fov = 55 * TO_RADIANS;
     this.camera.minZ = 1;
     this.camera.maxZ = 10000;
     this.camera.setTarget(new BABYLON.Vector3(0, 0, 0));
     this.camera.detachControl();
+
+    // Set initial camera distance based on viewport
+    this.updateCameraForViewport();
 
     // Ambient
     this.scene.ambientColor = new BABYLON.Color3(0.133, 0.133, 0.133);
@@ -138,7 +140,33 @@ export class BeanstalkScene {
     this.textureCache = new TextureCache(50);
 
     // Handle resize
-    window.addEventListener('resize', () => this.engine.resize());
+    window.addEventListener('resize', () => {
+      this.engine.resize();
+      this.updateCameraForViewport();
+    });
+  }
+
+  updateCameraForViewport() {
+    const aspectRatio = this.engine.getRenderWidth() / this.engine.getRenderHeight();
+    const fovRadians = this.camera.fov;
+    const tanHalfFov = Math.tan(fovRadians / 2);
+
+    let targetDistance;
+
+    if (aspectRatio < 1) {
+      // Portrait: ensure horizontal width shows games + sway
+      const requiredWidth = 500; // games at ±120 + sway ±90 + padding
+      targetDistance = (requiredWidth / 2) / (aspectRatio * tanHalfFov);
+    } else {
+      // Landscape: ensure vertical height shows 4-5 games
+      const requiredHeight = 500; // ~5 games worth of vertical space
+      targetDistance = (requiredHeight / 2) / tanHalfFov;
+    }
+
+    // Clamp to reasonable range
+    targetDistance = Math.max(300, Math.min(1200, targetDistance));
+
+    this.camera.position.z = -targetDistance;
   }
 
   initMaterials() {
