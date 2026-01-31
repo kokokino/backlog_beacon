@@ -9,6 +9,8 @@ import { ViewModeSelector, VIEW_MODES } from '../components/ViewModeSelector.js'
 import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
 import { PositionIndicator } from '../components/PositionIndicator.js';
 import { BeanstalkView } from '../components/beanstalk/BeanstalkView.js';
+import { BookshelfView } from '../components/BookshelfView.js';
+import { BookshelfThemeSelector, loadBookshelfTheme, saveBookshelfTheme } from '../components/BookshelfThemeSelector.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
 
@@ -43,6 +45,7 @@ const CollectionContent = {
     this.loadedRanges = [];  // Track loaded ranges for sparse loading: [[start, end], ...]
     this.visibleStart = 0;  // For position indicator
     this.visibleEnd = 0;    // For position indicator
+    this.bookshelfTheme = loadBookshelfTheme();  // Load saved theme preference
   },
 
   oncreate(vnode) {
@@ -131,10 +134,11 @@ const CollectionContent = {
     const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
 
     const isInfiniteMode = this.viewMode === VIEW_MODES.INFINITE;
+    const isBookshelfMode = this.viewMode === VIEW_MODES.BOOKSHELF;
     const isBeanstalkMode = this.viewMode === VIEW_MODES.BEANSTALK;
 
-    // INFINITE/BEANSTALK MODE: Use method calls only (no subscription reactivity issues)
-    if (isInfiniteMode || isBeanstalkMode) {
+    // INFINITE/BOOKSHELF/BEANSTALK MODE: Use method calls only (no subscription reactivity issues)
+    if (isInfiniteMode || isBookshelfMode || isBeanstalkMode) {
       this.loadInitialInfiniteData();
       return;
     }
@@ -325,8 +329,8 @@ const CollectionContent = {
     if (searchChanged || filtersChanged) {
       this.currentPage = 1;
       this.loadedCount = 0;
-      // Scroll to top when filters change in infinite mode
-      if (this.viewMode === VIEW_MODES.INFINITE) {
+      // Scroll to top when filters change in infinite/bookshelf mode
+      if (this.viewMode === VIEW_MODES.INFINITE || this.viewMode === VIEW_MODES.BOOKSHELF) {
         window.scrollTo(0, 0);
       }
     }
@@ -387,8 +391,8 @@ const CollectionContent = {
     };
     this.currentPage = 1;
     this.loadedCount = 0;
-    // Scroll to top when filters are cleared (especially useful in infinite mode)
-    if (this.viewMode === VIEW_MODES.INFINITE) {
+    // Scroll to top when filters are cleared (especially useful in infinite/bookshelf mode)
+    if (this.viewMode === VIEW_MODES.INFINITE || this.viewMode === VIEW_MODES.BOOKSHELF) {
       window.scrollTo(0, 0);
     }
     this.setupSubscriptions();
@@ -533,6 +537,15 @@ const CollectionContent = {
         onModeChange: (mode) => this.handleModeChange(mode)
       }),
 
+      // Bookshelf theme selector (only shown in bookshelf mode)
+      this.viewMode === VIEW_MODES.BOOKSHELF && m(BookshelfThemeSelector, {
+        currentTheme: this.bookshelfTheme,
+        onThemeChange: (theme) => {
+          this.bookshelfTheme = theme;
+          saveBookshelfTheme(theme);
+        }
+      }),
+
       // Hint when search is 1-2 characters
       showSearchHint && m('p.search-hint', 'Type at least 3 characters to search.'),
 
@@ -603,6 +616,25 @@ const CollectionContent = {
 
       // Position indicator for infinite mode (rendered at page level to avoid contain:layout issues)
       !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.INFINITE && this.totalCount > 0 && m(PositionIndicator, {
+        start: this.visibleStart || 1,
+        end: this.visibleEnd || Math.min(24, this.totalCount),
+        total: this.totalCount,
+        loading: this.loadingMore
+      }),
+
+      // Bookshelf mode: virtual scroll shelves
+      !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.BOOKSHELF && this.totalCount > 0 && m(BookshelfView, {
+        items: this.items,
+        games: this.games,
+        totalCount: this.totalCount,
+        theme: this.bookshelfTheme,
+        loading: this.loadingMore,
+        onUpdateItem: (collectionItem) => { this.editingItem = collectionItem; },
+        onVisibleRangeChange: (start, end, loaded) => this.handleVisibleRangeChange(start, end, loaded)
+      }),
+
+      // Position indicator for bookshelf mode
+      !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.BOOKSHELF && this.totalCount > 0 && m(PositionIndicator, {
         start: this.visibleStart || 1,
         end: this.visibleEnd || Math.min(24, this.totalCount),
         total: this.totalCount,

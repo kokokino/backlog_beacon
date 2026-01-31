@@ -3,6 +3,7 @@ import m from 'mithril';
 export const VIEW_MODES = {
   PAGES: 'pages',
   INFINITE: 'infinite',
+  BOOKSHELF: 'bookshelf',
   BEANSTALK: 'beanstalk'
 };
 
@@ -23,6 +24,12 @@ export const ViewModeSelector = {
           class: currentMode === VIEW_MODES.INFINITE ? 'selected' : 'outline',
           onclick: () => onModeChange(VIEW_MODES.INFINITE)
         }, 'Infinite'),
+        m('button', {
+          type: 'button',
+          class: currentMode === VIEW_MODES.BOOKSHELF ? 'selected' : 'outline',
+          title: 'Display games on wooden shelves',
+          onclick: () => onModeChange(VIEW_MODES.BOOKSHELF)
+        }, 'Bookshelf'),
         m('button', {
           type: 'button',
           class: currentMode === VIEW_MODES.BEANSTALK ? 'selected' : 'outline',

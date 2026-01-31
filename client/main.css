@@ -1637,3 +1637,153 @@ dialog article footer button {
     width: 16px;
   }
 }
+
+/* Bookshelf View */
+.bookshelf-container {
+  position: relative;
+  width: 100%;
+}
+
+.bookshelf-row {
+  position: relative;
+  box-sizing: border-box;
+  background-size: auto 100%;
+  background-repeat: repeat-x;
+  background-position: bottom;
+}
+
+.bookshelf-row-items {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 16px 0;
+  height: calc(100% - 50px);
+  align-items: flex-end;
+}
+
+/* Theme variants */
+.bookshelf-container.theme-brown .bookshelf-row {
+  background-image: url('/textures/bookshelf/shelf-brown.webp');
+}
+
+.bookshelf-container.theme-gray .bookshelf-row {
+  background-image: url('/textures/bookshelf/shelf-gray.webp');
+}
+
+/* Individual cover item */
+.bookshelf-item {
+  width: 108px;
+  height: 149px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.bookshelf-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
+  border-radius: 2px;
+}
+
+/* Glossy overlay */
+.bookshelf-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, transparent 50%);
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.bookshelf-item:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+
+.bookshelf-item:hover img {
+  box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* Theme selector */
+.bookshelf-theme-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.bookshelf-theme-selector .theme-label {
+  color: var(--pico-muted-color);
+  font-size: 0.875rem;
+}
+
+.bookshelf-theme-selector .theme-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.15s, border-color 0.15s;
+}
+
+.bookshelf-theme-selector .theme-btn:hover {
+  transform: scale(1.1);
+}
+
+.bookshelf-theme-selector .theme-btn.selected {
+  border-color: var(--pico-primary);
+}
+
+.bookshelf-theme-selector .theme-brown {
+  background: linear-gradient(135deg, #8B4513 0%, #654321 100%);
+}
+
+.bookshelf-theme-selector .theme-gray {
+  background: linear-gradient(135deg, #808080 0%, #5a5a5a 100%);
+}
+
+/* Bookshelf loading overlay */
+.bookshelf-loading {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  background: var(--pico-card-background-color);
+  padding: 2rem;
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  z-index: 50;
+}
+
+.bookshelf-loading p {
+  margin: 1rem 0 0 0;
+  color: var(--pico-muted-color);
+}
+
+/* Responsive bookshelf */
+@media (max-width: 900px) {
+  .bookshelf-item {
+    width: 90px;
+    height: 124px;
+  }
+
+  .bookshelf-row-items {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 600px) {
+  .bookshelf-item {
+    width: 75px;
+    height: 103px;
+  }
+
+  .bookshelf-row-items {
+    gap: 8px;
+    padding: 12px 12px 0;
+  }
+}
