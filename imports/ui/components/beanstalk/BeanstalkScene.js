@@ -681,18 +681,22 @@ export class BeanstalkScene {
 
     // Spawn leaves when climbing UP - only if we have more games
     if (climbVelocity > 0.1 && this.nextGameIndex < this.totalCount) {
-      this.spawnCounter++;
-      if (this.spawnCounter >= 10) {
-        this.spawnCounter = 0;
+      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast
+      this.spawnCounter += Math.max(1, Math.abs(climbVelocity));
+      // Allow multiple spawns per frame if scrolling very fast
+      while (this.spawnCounter >= 10 && this.nextGameIndex < this.totalCount) {
+        this.spawnCounter -= 10;
         this.spawnLeaf();
       }
     }
 
     // Spawn leaves when scrolling DOWN (only if we have lower games to show)
     if (climbVelocity < -0.1 && this.minGameIndex > 0) {
-      this.spawnCounterDown++;
-      if (this.spawnCounterDown >= 10) {
-        this.spawnCounterDown = 0;
+      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast
+      this.spawnCounterDown += Math.max(1, Math.abs(climbVelocity));
+      // Allow multiple spawns per frame if scrolling very fast
+      while (this.spawnCounterDown >= 10 && this.minGameIndex > 0) {
+        this.spawnCounterDown -= 10;
         this.spawnLeafAtBottom();
       }
     }

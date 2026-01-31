@@ -2,8 +2,8 @@
  * BeanstalkInput.js - Scroll/drag/touch navigation with momentum physics
  */
 
-// Climb physics (snappier touch feel)
-const CLIMB_FRICTION = 0.90;
+// Climb physics (smooth momentum for natural touch feel)
+const CLIMB_FRICTION = 0.96;
 const CLIMB_MIN = -6.0;
 const CLIMB_MAX = 6.0;
 const SCROLL_SENSITIVITY = 0.03;
@@ -260,10 +260,10 @@ export class BeanstalkInput {
         this.camera.position.z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.camera.position.z));
       }
 
-      // Pan (two-finger horizontal)
+      // Pan (two-finger horizontal) - negate delta so content follows fingers
       const centerX = (touch1.clientX + touch2.clientX) / 2;
       const panDelta = centerX - this.panStartX;
-      const newCameraX = this.panStartCameraX + panDelta * PAN_SENSITIVITY;
+      const newCameraX = this.panStartCameraX - panDelta * PAN_SENSITIVITY;
       this.targetCameraX = Math.max(PAN_MIN, Math.min(PAN_MAX, newCameraX));
       return;
     }

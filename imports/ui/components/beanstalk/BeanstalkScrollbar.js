@@ -8,6 +8,7 @@ export const BeanstalkScrollbar = {
   oninit(vnode) {
     this.isDragging = false;
     this.trackElement = null;
+    this.lastSeekTime = 0;
   },
 
   oncreate(vnode) {
@@ -54,6 +55,7 @@ export const BeanstalkScrollbar = {
   handlePointerUp(vnode, event) {
     if (this.isDragging) {
       this.isDragging = false;
+      this.lastSeekTime = 0;  // Reset throttle so next click is instant
       m.redraw();
     }
   },
@@ -62,6 +64,13 @@ export const BeanstalkScrollbar = {
     if (!this.trackElement) {
       return;
     }
+
+    // Throttle seeks to max 5 per second during drag to prevent scene overwhelm
+    const now = Date.now();
+    if (this.lastSeekTime && now - this.lastSeekTime < 200) {
+      return;
+    }
+    this.lastSeekTime = now;
 
     const rect = this.trackElement.getBoundingClientRect();
     const { totalCount, visibleCount } = vnode.attrs;
