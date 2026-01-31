@@ -36,7 +36,8 @@ export const BookshelfThemeSelector = {
         class: currentTheme === BOOKSHELF_THEMES.GRAY ? 'selected' : '',
         title: 'Gray wood',
         onclick: () => onThemeChange(BOOKSHELF_THEMES.GRAY)
-      })
+      }),
+      m('span.darkadia-credit', 'Inspired by Darkadia')
     ]);
   }
 };
