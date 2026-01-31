@@ -2,19 +2,36 @@
  * BeanstalkInput.js - Scroll/drag/touch navigation with momentum physics
  */
 
-const CLIMB_FRICTION = 0.95;
-const CLIMB_MIN = -4.0;
-const CLIMB_MAX = 4.0;
+// Climb physics (snappier touch feel)
+const CLIMB_FRICTION = 0.90;
+const CLIMB_MIN = -6.0;
+const CLIMB_MAX = 6.0;
 const SCROLL_SENSITIVITY = 0.03;
 const DRAG_SENSITIVITY = 0.2;
 const CLICK_MAX_DISTANCE = 10;    // pixels - max movement for a click
 const CLICK_MAX_DURATION = 300;   // ms - max hold time for a click
+
+// Touch-specific (2x mouse drag for touch)
+const TOUCH_DRAG_SENSITIVITY = 0.4;
+
+// Zoom
+const ZOOM_SENSITIVITY = 0.5;         // Pinch distance to Z
+const CTRL_ZOOM_SENSITIVITY = 0.5;    // Ctrl+wheel to Z
+const ZOOM_MIN = -1500;               // Max zoom out
+const ZOOM_MAX = -200;                // Max zoom in
+
+// Pan
+const PAN_SENSITIVITY = 0.2;          // Two-finger pan
+const SHIFT_PAN_SENSITIVITY = 0.3;    // Shift+wheel pan
+const PAN_MIN = -200;                 // Left limit
+const PAN_MAX = 200;                  // Right limit
 
 export class BeanstalkInput {
   constructor(canvas, options = {}) {
     this.canvas = canvas;
     this.onGameSelect = options.onGameSelect || (() => {});
     this.onVelocityChange = options.onVelocityChange || (() => {});
+    this.onPanStart = options.onPanStart || (() => {});
 
     // Velocity state
     this.climbVelocity = 1.0;
@@ -27,11 +44,26 @@ export class BeanstalkInput {
     // Scene reference for raycasting
     this.scene = null;
 
+    // Camera reference for zoom/pan
+    this.camera = null;
+
     // Click detection state
     this.pointerStartX = 0;
     this.pointerStartY = 0;
     this.pointerStartTime = 0;
     this.hasMoved = false;
+
+    // Multi-touch state
+    this.pinchStartDistance = 0;
+    this.lastPinchDistance = 0;
+    this.isPinching = false;
+    this.panStartX = 0;
+    this.panStartCameraX = 0;
+    this.isPanning = false;
+
+    // Smooth camera pan/zoom targets
+    this.targetCameraX = 0;
+    this.targetCameraZ = null;  // null = not initialized yet
 
     // Bind methods
     this.onWheel = this.onWheel.bind(this);
@@ -47,6 +79,10 @@ export class BeanstalkInput {
 
   setScene(scene) {
     this.scene = scene;
+  }
+
+  setCamera(camera) {
+    this.camera = camera;
   }
 
   setupEventListeners() {
@@ -81,7 +117,28 @@ export class BeanstalkInput {
 
   onWheel(event) {
     event.preventDefault();
-    // Scroll up (negative deltaY) = climb faster, scroll down = slow/reverse
+
+    if (event.ctrlKey && this.camera) {
+      // Ctrl + wheel = zoom
+      this.camera.position.z += event.deltaY * CTRL_ZOOM_SENSITIVITY;
+      this.camera.position.z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.camera.position.z));
+      return;
+    }
+
+    if (event.shiftKey && this.camera) {
+      // Shift + wheel = pan (browser puts scroll in deltaX when shift is held)
+      // Initialize target from current position on first pan
+      if (this.targetCameraX === 0 && this.camera.position.x !== 0) {
+        this.targetCameraX = this.camera.position.x;
+      }
+      this.onPanStart();
+      const delta = event.deltaX !== 0 ? event.deltaX : event.deltaY;
+      this.targetCameraX += delta * SHIFT_PAN_SENSITIVITY;
+      this.targetCameraX = Math.max(PAN_MIN, Math.min(PAN_MAX, this.targetCameraX));
+      return;
+    }
+
+    // Normal scroll = climb velocity
     this.targetClimbVelocity -= event.deltaY * SCROLL_SENSITIVITY;
     this.clampTargetVelocity();
   }
@@ -146,6 +203,29 @@ export class BeanstalkInput {
   }
 
   onTouchStart(event) {
+    if (event.touches.length === 2) {
+      // Two fingers: start pinch/pan gesture
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+
+      // Pinch distance
+      const dx = touch1.clientX - touch2.clientX;
+      const dy = touch1.clientY - touch2.clientY;
+      this.pinchStartDistance = Math.sqrt(dx * dx + dy * dy);
+      this.lastPinchDistance = this.pinchStartDistance;
+      this.isPinching = true;
+
+      // Pan center
+      this.panStartX = (touch1.clientX + touch2.clientX) / 2;
+      this.panStartCameraX = this.camera ? this.camera.position.x : 0;
+      this.isPanning = true;
+      this.onPanStart();
+
+      // Cancel single-finger drag
+      this.isDragging = false;
+      return;
+    }
+
     if (event.touches.length === 1) {
       const touch = event.touches[0];
       const rect = this.canvas.getBoundingClientRect();
@@ -162,6 +242,32 @@ export class BeanstalkInput {
   }
 
   onTouchMove(event) {
+    if (event.touches.length === 2 && this.isPinching) {
+      event.preventDefault();
+
+      const touch1 = event.touches[0];
+      const touch2 = event.touches[1];
+
+      // Pinch zoom
+      const dx = touch1.clientX - touch2.clientX;
+      const dy = touch1.clientY - touch2.clientY;
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+      const pinchDelta = currentDistance - this.lastPinchDistance;
+      this.lastPinchDistance = currentDistance;
+
+      if (this.camera) {
+        this.camera.position.z += pinchDelta * ZOOM_SENSITIVITY;
+        this.camera.position.z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.camera.position.z));
+      }
+
+      // Pan (two-finger horizontal)
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const panDelta = centerX - this.panStartX;
+      const newCameraX = this.panStartCameraX + panDelta * PAN_SENSITIVITY;
+      this.targetCameraX = Math.max(PAN_MIN, Math.min(PAN_MAX, newCameraX));
+      return;
+    }
+
     if (event.touches.length === 1 && this.isDragging) {
       event.preventDefault();
 
@@ -181,12 +287,19 @@ export class BeanstalkInput {
       const deltaY = touch.clientY - this.lastDragY;
       this.lastDragY = touch.clientY;
 
-      this.targetClimbVelocity += deltaY * DRAG_SENSITIVITY;
+      // Use faster touch sensitivity
+      this.targetClimbVelocity += deltaY * TOUCH_DRAG_SENSITIVITY;
       this.clampTargetVelocity();
     }
   }
 
-  onTouchEnd() {
+  onTouchEnd(event) {
+    // Reset pinch/pan when going below 2 fingers
+    if (event.touches.length < 2) {
+      this.isPinching = false;
+      this.isPanning = false;
+    }
+
     const wasClick = !this.hasMoved &&
       (Date.now() - this.pointerStartTime) < CLICK_MAX_DURATION;
 
@@ -223,6 +336,11 @@ export class BeanstalkInput {
 
     // Clamp
     this.clampTargetVelocity();
+
+    // Smooth camera pan
+    if (this.camera) {
+      this.camera.position.x += (this.targetCameraX - this.camera.position.x) * 0.1;
+    }
 
     this.onVelocityChange(this.climbVelocity);
 

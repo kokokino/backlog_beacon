@@ -257,9 +257,11 @@ export class BeanstalkScene {
             showToast('Loading game...');
           }
         }
-      }
+      },
+      onPanStart: () => this.stopCameraSway()
     });
     this.input.setScene(this.scene);
+    this.input.setCamera(this.camera);
   }
 
   initEffects() {
@@ -388,21 +390,32 @@ export class BeanstalkScene {
       .easing(Easing.Sinusoidal.EaseOut)
       .start();
 
-    // Camera sway animation
-    const cameraTween = new Tween(this.camera.position, this.animationManager)
+    // Camera sway animation (stored so it can be stopped when user pans)
+    this.cameraTween = new Tween(this.camera.position, this.animationManager)
       .to({ x: 50 }, 12000)
       .easing(Easing.Sinusoidal.EaseInOut)
       .start();
 
-    const cameraTweenBack = new Tween(this.camera.position, this.animationManager)
+    this.cameraTweenBack = new Tween(this.camera.position, this.animationManager)
       .to({ x: -50 }, 12000)
       .easing(Easing.Sinusoidal.EaseInOut);
 
-    cameraTween.chain(cameraTweenBack);
-    cameraTweenBack.chain(cameraTween);
+    this.cameraTween.chain(this.cameraTweenBack);
+    this.cameraTweenBack.chain(this.cameraTween);
 
     // Pre-populate some leaves
     this.prePopulateLeaves();
+  }
+
+  stopCameraSway() {
+    if (this.cameraTween) {
+      this.cameraTween.stop();
+      this.cameraTween = null;
+    }
+    if (this.cameraTweenBack) {
+      this.cameraTweenBack.stop();
+      this.cameraTweenBack = null;
+    }
   }
 
   prePopulateLeaves() {

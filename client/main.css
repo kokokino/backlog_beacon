@@ -1534,7 +1534,7 @@ dialog article footer button {
   border-radius: var(--pico-border-radius);
   text-align: center;
   opacity: 1;
-  animation: beanstalk-instructions-fade 5s ease-out forwards;
+  animation: beanstalk-instructions-fade 12s ease-out forwards;
 }
 
 .beanstalk-instructions p {
@@ -1544,7 +1544,7 @@ dialog article footer button {
 }
 
 @keyframes beanstalk-instructions-fade {
-  0%, 60% { opacity: 1; }
+  0%, 83% { opacity: 1; }
   100% { opacity: 0; pointer-events: none; }
 }
 
@@ -1645,7 +1645,15 @@ dialog article footer button {
     right: 0.5rem;
     top: 4rem;
     bottom: 4rem;
-    width: 16px;
+    width: 32px;
+  }
+
+  .beanstalk-scrollbar-track {
+    border-radius: 16px;
+  }
+
+  .beanstalk-scrollbar-thumb {
+    border-radius: 14px;
   }
 }
 

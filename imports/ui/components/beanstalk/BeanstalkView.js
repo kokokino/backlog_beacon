@@ -92,11 +92,20 @@ export const BeanstalkView = {
           loading: false
         }),
 
-        // Instructions overlay (shown briefly)
-        m('div.beanstalk-instructions', [
-          m('p', 'Scroll or drag to climb'),
-          m('p', 'Click a game to edit')
-        ]),
+        // Instructions overlay (shown briefly, device-aware)
+        m('div.beanstalk-instructions',
+          ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+            ? [
+                m('p', 'Swipe to climb'),
+                m('p', 'Pinch to zoom \u2022 Two fingers to pan'),
+                m('p', 'Tap a game to view')
+              ]
+            : [
+                m('p', 'Scroll to climb'),
+                m('p', 'Ctrl+Scroll to zoom \u2022 Shift+Scroll to pan'),
+                m('p', 'Click a game to edit')
+              ]
+        ),
 
         // Scrollbar for quick navigation
         totalCount > 0 && m(BeanstalkScrollbar, {
