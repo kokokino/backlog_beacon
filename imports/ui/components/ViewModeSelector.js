@@ -7,6 +7,20 @@ export const VIEW_MODES = {
   BEANSTALK: 'beanstalk'
 };
 
+const STORAGE_KEY = 'collectionViewMode';
+
+export function loadViewMode() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored && Object.values(VIEW_MODES).includes(stored)) {
+    return stored;
+  }
+  return VIEW_MODES.PAGES;
+}
+
+export function saveViewMode(mode) {
+  localStorage.setItem(STORAGE_KEY, mode);
+}
+
 export const ViewModeSelector = {
   view(vnode) {
     const { currentMode, onModeChange } = vnode.attrs;

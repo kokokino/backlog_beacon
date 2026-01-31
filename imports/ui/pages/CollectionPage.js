@@ -5,7 +5,7 @@ import { RequireAuth } from '../components/RequireAuth.js';
 import { GameCard } from '../components/GameCard.js';
 import { EditItemModal } from '../components/EditItemModal.js';
 import { CollectionFilters } from '../components/CollectionFilters.js';
-import { ViewModeSelector, VIEW_MODES } from '../components/ViewModeSelector.js';
+import { ViewModeSelector, VIEW_MODES, loadViewMode, saveViewMode } from '../components/ViewModeSelector.js';
 import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
 import { PositionIndicator } from '../components/PositionIndicator.js';
 import { BeanstalkView } from '../components/beanstalk/BeanstalkView.js';
@@ -40,7 +40,7 @@ const CollectionContent = {
     this.searchDebounceTimer = null;
     this.searchFeedbackTimer = null;
     this.isSearchPending = false;
-    this.viewMode = VIEW_MODES.PAGES;
+    this.viewMode = loadViewMode();
     this.loadedCount = 0;  // Track how many items are loaded in infinite mode
     this.loadedRanges = [];  // Track loaded ranges for sparse loading: [[start, end], ...]
     this.visibleStart = 0;  // For position indicator
@@ -413,6 +413,7 @@ const CollectionContent = {
       return;
     }
     this.viewMode = newMode;
+    saveViewMode(newMode);
     this.items = [];
     this.loadedRanges = [];
     this.loadedCount = 0;
