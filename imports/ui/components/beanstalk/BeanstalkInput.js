@@ -7,6 +7,8 @@ const CLIMB_MIN = -4.0;
 const CLIMB_MAX = 4.0;
 const SCROLL_SENSITIVITY = 0.03;
 const DRAG_SENSITIVITY = 0.2;
+const CLICK_MAX_DISTANCE = 10;    // pixels - max movement for a click
+const CLICK_MAX_DURATION = 300;   // ms - max hold time for a click
 
 export class BeanstalkInput {
   constructor(canvas, options = {}) {
@@ -24,6 +26,12 @@ export class BeanstalkInput {
 
     // Scene reference for raycasting
     this.scene = null;
+
+    // Click detection state
+    this.pointerStartX = 0;
+    this.pointerStartY = 0;
+    this.pointerStartTime = 0;
+    this.hasMoved = false;
 
     // Bind methods
     this.onWheel = this.onWheel.bind(this);
@@ -79,16 +87,15 @@ export class BeanstalkInput {
   }
 
   onPointerDown(event) {
-    // Check if clicking on a game case
-    if (this.scene && !this.isDragging) {
-      const pickResult = this.scene.pick(event.offsetX, event.offsetY);
-      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameData) {
-        this.onGameSelect(pickResult.pickedMesh.metadata);
-        return;
-      }
-    }
-
     event.preventDefault();
+
+    // Record start position and time for click detection
+    this.pointerStartX = event.offsetX;
+    this.pointerStartY = event.offsetY;
+    this.pointerStartTime = Date.now();
+    this.hasMoved = false;
+
+    // Start drag tracking
     this.isDragging = true;
     this.lastDragY = event.clientY;
     this.canvas.style.cursor = 'grabbing';
@@ -101,6 +108,16 @@ export class BeanstalkInput {
     }
     event.preventDefault();
 
+    // Check if movement exceeds click threshold
+    if (!this.hasMoved) {
+      const deltaX = event.offsetX - this.pointerStartX;
+      const deltaY = event.offsetY - this.pointerStartY;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      if (distance > CLICK_MAX_DISTANCE) {
+        this.hasMoved = true;
+      }
+    }
+
     const deltaY = event.clientY - this.lastDragY;
     this.lastDragY = event.clientY;
 
@@ -110,6 +127,17 @@ export class BeanstalkInput {
   }
 
   onPointerUp(event) {
+    const wasClick = !this.hasMoved &&
+      (Date.now() - this.pointerStartTime) < CLICK_MAX_DURATION;
+
+    // Check for game selection on click (not drag)
+    if (wasClick && this.scene) {
+      const pickResult = this.scene.pick(this.pointerStartX, this.pointerStartY);
+      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameData) {
+        this.onGameSelect(pickResult.pickedMesh.metadata);
+      }
+    }
+
     if (this.isDragging && event.pointerId !== undefined) {
       this.canvas.releasePointerCapture(event.pointerId);
     }
@@ -119,8 +147,17 @@ export class BeanstalkInput {
 
   onTouchStart(event) {
     if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+
+      // Record start for click detection
+      this.pointerStartX = touch.clientX - rect.left;
+      this.pointerStartY = touch.clientY - rect.top;
+      this.pointerStartTime = Date.now();
+      this.hasMoved = false;
+
       this.isDragging = true;
-      this.lastDragY = event.touches[0].clientY;
+      this.lastDragY = touch.clientY;
     }
   }
 
@@ -128,8 +165,21 @@ export class BeanstalkInput {
     if (event.touches.length === 1 && this.isDragging) {
       event.preventDefault();
 
-      const deltaY = event.touches[0].clientY - this.lastDragY;
-      this.lastDragY = event.touches[0].clientY;
+      const touch = event.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+
+      // Check if movement exceeds click threshold
+      if (!this.hasMoved) {
+        const deltaX = (touch.clientX - rect.left) - this.pointerStartX;
+        const deltaY = (touch.clientY - rect.top) - this.pointerStartY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (distance > CLICK_MAX_DISTANCE) {
+          this.hasMoved = true;
+        }
+      }
+
+      const deltaY = touch.clientY - this.lastDragY;
+      this.lastDragY = touch.clientY;
 
       this.targetClimbVelocity += deltaY * DRAG_SENSITIVITY;
       this.clampTargetVelocity();
@@ -137,6 +187,17 @@ export class BeanstalkInput {
   }
 
   onTouchEnd() {
+    const wasClick = !this.hasMoved &&
+      (Date.now() - this.pointerStartTime) < CLICK_MAX_DURATION;
+
+    // Check for game selection on tap (not drag)
+    if (wasClick && this.scene) {
+      const pickResult = this.scene.pick(this.pointerStartX, this.pointerStartY);
+      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameData) {
+        this.onGameSelect(pickResult.pickedMesh.metadata);
+      }
+    }
+
     this.isDragging = false;
   }
 
