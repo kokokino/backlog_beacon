@@ -1745,6 +1745,13 @@ dialog article footer button {
   background: linear-gradient(135deg, #808080 0%, #5a5a5a 100%);
 }
 
+.bookshelf-theme-selector .darkadia-credit {
+  margin-left: 1rem;
+  font-size: 0.8rem;
+  color: var(--pico-muted-color);
+  font-style: italic;
+}
+
 /* Bookshelf loading overlay */
 .bookshelf-loading {
   position: fixed;
