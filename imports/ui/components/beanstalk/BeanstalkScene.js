@@ -739,17 +739,12 @@ export class BeanstalkScene {
         -90 * TO_RADIANS
       );
 
-      // Collapse rings into the dirt mound
-      const roosterRingIndex = Math.floor(highestLeaf.ringIndex) + 2;
-      for (let ringIndex = roosterRingIndex; ringIndex < this.plant.ring.length; ringIndex++) {
-        for (let vertexIndex = 0; vertexIndex < this.plant.ring[ringIndex].length; vertexIndex++) {
-          this.plant.ring[ringIndex][vertexIndex].set(
-            this.roosterDirt ? this.roosterDirt.position.x : this.rooster.position.x,
-            this.roosterDirt ? this.roosterDirt.position.y : this.rooster.position.y,
-            this.roosterDirt ? this.roosterDirt.position.z : this.rooster.position.z
-          );
-        }
-      }
+      // Set collapse point for rings above rooster (handled in updateVertices)
+      this.plant.collapseAboveRing = Math.floor(highestLeaf.ringIndex) + 2;
+      this.plant.collapsePoint = this.roosterDirt ? this.roosterDirt.position : this.rooster.position;
+    } else {
+      this.plant.collapseAboveRing = null;
+      this.plant.collapsePoint = null;
     }
 
     this.plant.updateVertices();

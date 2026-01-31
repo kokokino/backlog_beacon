@@ -47,6 +47,10 @@ export class BeanstalkPlant {
     // Base and branch points
     this.basePoint = new BABYLON.Vector3(0, 0, 0);
     this.branchPoint = new BABYLON.Vector3(0, 0, -450);
+
+    // Collapse settings - rings at or above this index collapse to collapsePoint
+    this.collapseAboveRing = null;
+    this.collapsePoint = null;
   }
 
   build() {
@@ -173,12 +177,22 @@ export class BeanstalkPlant {
 
   updateVertices() {
     // Update positions from ring data
+    const shouldCollapse = this.collapseAboveRing !== null && this.collapsePoint !== null;
+
     for (let ringIndex = 0; ringIndex < this.totalLinks; ringIndex++) {
+      const collapse = shouldCollapse && ringIndex >= this.collapseAboveRing;
+
       for (let vertexIndex = 0; vertexIndex < BRANCH_SEGMENTS; vertexIndex++) {
         const idx = (ringIndex * BRANCH_SEGMENTS + vertexIndex) * 3;
-        this.positions[idx] = this.ring[ringIndex][vertexIndex].x;
-        this.positions[idx + 1] = this.ring[ringIndex][vertexIndex].y;
-        this.positions[idx + 2] = this.ring[ringIndex][vertexIndex].z;
+        if (collapse) {
+          this.positions[idx] = this.collapsePoint.x;
+          this.positions[idx + 1] = this.collapsePoint.y;
+          this.positions[idx + 2] = this.collapsePoint.z;
+        } else {
+          this.positions[idx] = this.ring[ringIndex][vertexIndex].x;
+          this.positions[idx + 1] = this.ring[ringIndex][vertexIndex].y;
+          this.positions[idx + 2] = this.ring[ringIndex][vertexIndex].z;
+        }
       }
     }
 
