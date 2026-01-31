@@ -9,6 +9,7 @@ export const BeanstalkScrollbar = {
     this.isDragging = false;
     this.trackElement = null;
     this.lastSeekTime = 0;
+    this.activePointerId = null;
   },
 
   oncreate(vnode) {
@@ -39,23 +40,30 @@ export const BeanstalkScrollbar = {
     event.preventDefault();
     event.stopPropagation();
     this.isDragging = true;
+    this.activePointerId = event.pointerId;
+    event.target.setPointerCapture(event.pointerId);
 
     // Immediately seek to clicked position
     this.seekToPosition(vnode, event.clientY);
   },
 
   handlePointerMove(vnode, event) {
-    if (!this.isDragging) {
+    if (!this.isDragging || event.pointerId !== this.activePointerId) {
       return;
     }
     event.preventDefault();
+    event.stopPropagation();
     this.seekToPosition(vnode, event.clientY);
   },
 
   handlePointerUp(vnode, event) {
-    if (this.isDragging) {
+    if (this.isDragging && event.pointerId === this.activePointerId) {
       this.isDragging = false;
+      this.activePointerId = null;
       this.lastSeekTime = 0;  // Reset throttle so next click is instant
+      if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
+        event.target.releasePointerCapture(event.pointerId);
+      }
       m.redraw();
     }
   },
