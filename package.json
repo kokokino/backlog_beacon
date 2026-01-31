@@ -1,6 +1,9 @@
 {
   "name": "backlog_beacon",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "start": "meteor run",
     "dev": "meteor --port 3020 --settings settings.development.json",
