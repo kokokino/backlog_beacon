@@ -40,51 +40,310 @@ export class ObjectPool {
 }
 
 /**
- * LRU texture cache with automatic disposal
+ * Texture loading states
+ */
+const TextureState = {
+  PENDING: 'pending',
+  LOADING: 'loading',
+  LOADED: 'loaded',
+  FAILED: 'failed'
+};
+
+/**
+ * Entry tracking a texture's loading state and callbacks
+ */
+class TextureEntry {
+  constructor(url) {
+    this.url = url;
+    this.state = TextureState.PENDING;
+    this.texture = null;
+    this.retryCount = 0;
+    this.maxRetries = 3;
+    this.timeoutMs = 15000;
+    this.timeoutId = null;
+    this.callbacks = [];  // {mesh, material} to update on load
+  }
+}
+
+/**
+ * LRU texture cache with robust loading, retries, and placeholders
  */
 export class TextureCache {
   constructor(maxSize = 50) {
     this.maxSize = maxSize;
-    this.cache = new Map();
+    this.entries = new Map();
     this.accessOrder = [];
+    this.loadingPlaceholder = null;
+    this.errorPlaceholder = null;
+    this.scene = null;
   }
 
-  get(url) {
-    if (this.cache.has(url)) {
+  /**
+   * Initialize placeholder textures (call after scene is ready)
+   */
+  initPlaceholders(scene) {
+    this.scene = scene;
+
+    // Gray gradient SVG for loading state
+    const loadingDataUrl = 'data:image/svg+xml;base64,' + btoa(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+        <defs>
+          <linearGradient id="loadingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:#d0d0d0"/>
+            <stop offset="100%" style="stop-color:#a0a0a0"/>
+          </linearGradient>
+        </defs>
+        <rect width="300" height="400" fill="url(#loadingGrad)"/>
+      </svg>
+    `.trim());
+
+    // Error placeholder - "No Cover" text
+    const errorDataUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
+
+    // Import BABYLON dynamically to avoid circular dependencies
+    import('@babylonjs/core').then((BABYLON) => {
+      this.loadingPlaceholder = new BABYLON.Texture(loadingDataUrl, scene);
+      this.errorPlaceholder = new BABYLON.Texture(errorDataUrl, scene);
+    });
+  }
+
+  /**
+   * Request a texture - returns placeholder immediately, updates material async
+   * @param {string} url - Texture URL
+   * @param {BABYLON.Scene} scene - Babylon scene
+   * @param {BABYLON.Mesh} mesh - Mesh to update
+   * @param {BABYLON.Material} material - Material to update with loaded texture
+   * @returns {BABYLON.Texture} - Placeholder or cached texture
+   */
+  requestTexture(url, scene, mesh, material) {
+    // Check for existing entry
+    let entry = this.entries.get(url);
+
+    if (entry) {
       // Move to end of access order (most recently used)
       const index = this.accessOrder.indexOf(url);
       if (index > -1) {
         this.accessOrder.splice(index, 1);
       }
       this.accessOrder.push(url);
-      return this.cache.get(url);
+
+      switch (entry.state) {
+        case TextureState.LOADED:
+          return entry.texture;
+
+        case TextureState.LOADING:
+          // Add callback to update this material when load completes
+          entry.callbacks.push({ mesh, material });
+          return this.loadingPlaceholder;
+
+        case TextureState.FAILED:
+          return this.errorPlaceholder;
+
+        case TextureState.PENDING:
+          // Shouldn't happen, but handle it
+          entry.callbacks.push({ mesh, material });
+          this._startLoad(entry, scene);
+          return this.loadingPlaceholder;
+      }
+    }
+
+    // New texture - create entry and start loading
+    entry = new TextureEntry(url);
+    entry.callbacks.push({ mesh, material });
+
+    // Evict oldest if at capacity
+    this._evictIfNeeded();
+
+    this.entries.set(url, entry);
+    this.accessOrder.push(url);
+
+    this._startLoad(entry, scene);
+    return this.loadingPlaceholder;
+  }
+
+  /**
+   * Start loading a texture with timeout
+   */
+  _startLoad(entry, scene) {
+    entry.state = TextureState.LOADING;
+
+    import('@babylonjs/core').then((BABYLON) => {
+      // Set up timeout
+      entry.timeoutId = setTimeout(() => {
+        this._onLoadError(entry, scene, 'Timeout');
+      }, entry.timeoutMs);
+
+      // Create texture with success/error callbacks
+      entry.texture = new BABYLON.Texture(
+        entry.url,
+        scene,
+        false,  // noMipmap
+        true,   // invertY
+        BABYLON.Texture.BILINEAR_SAMPLINGMODE,
+        () => { // onLoad success
+          this._onLoadSuccess(entry);
+        },
+        () => { // onLoad error
+          this._onLoadError(entry, scene, 'Load failed');
+        }
+      );
+    });
+  }
+
+  /**
+   * Handle successful texture load
+   */
+  _onLoadSuccess(entry) {
+    // Clear timeout
+    if (entry.timeoutId) {
+      clearTimeout(entry.timeoutId);
+      entry.timeoutId = null;
+    }
+
+    entry.state = TextureState.LOADED;
+
+    // Update all waiting materials
+    for (const callback of entry.callbacks) {
+      if (callback.material && !callback.material.isDisposed) {
+        callback.material.albedoTexture = entry.texture;
+      }
+    }
+    entry.callbacks = [];
+  }
+
+  /**
+   * Handle texture load error
+   */
+  _onLoadError(entry, scene, reason) {
+    // Clear timeout
+    if (entry.timeoutId) {
+      clearTimeout(entry.timeoutId);
+      entry.timeoutId = null;
+    }
+
+    // Dispose failed texture
+    if (entry.texture) {
+      entry.texture.dispose();
+      entry.texture = null;
+    }
+
+    entry.retryCount++;
+
+    if (entry.retryCount < entry.maxRetries) {
+      // Schedule retry with exponential backoff
+      this._scheduleRetry(entry, scene);
+    } else {
+      // Max retries exceeded - mark as failed
+      entry.state = TextureState.FAILED;
+
+      // Apply error placeholder to all waiting materials
+      for (const callback of entry.callbacks) {
+        if (callback.material && !callback.material.isDisposed) {
+          callback.material.albedoTexture = this.errorPlaceholder;
+        }
+      }
+      entry.callbacks = [];
+
+      // Remove from cache so it can be retried later if needed
+      this.entries.delete(entry.url);
+      const index = this.accessOrder.indexOf(entry.url);
+      if (index > -1) {
+        this.accessOrder.splice(index, 1);
+      }
+    }
+  }
+
+  /**
+   * Schedule a retry with exponential backoff
+   */
+  _scheduleRetry(entry, scene) {
+    // Exponential backoff: 2s, 4s, 8s
+    const delay = Math.pow(2, entry.retryCount) * 1000;
+
+    entry.state = TextureState.PENDING;
+
+    setTimeout(() => {
+      // Only retry if still in cache and not already loading
+      if (this.entries.has(entry.url) && entry.state === TextureState.PENDING) {
+        this._startLoad(entry, scene);
+      }
+    }, delay);
+  }
+
+  /**
+   * Evict oldest entries if at capacity
+   */
+  _evictIfNeeded() {
+    while (this.entries.size >= this.maxSize && this.accessOrder.length > 0) {
+      const oldest = this.accessOrder.shift();
+      const entry = this.entries.get(oldest);
+      if (entry) {
+        // Clear any pending timeout
+        if (entry.timeoutId) {
+          clearTimeout(entry.timeoutId);
+        }
+        // Dispose texture if loaded
+        if (entry.texture) {
+          entry.texture.dispose();
+        }
+      }
+      this.entries.delete(oldest);
+    }
+  }
+
+  /**
+   * Legacy get method for compatibility
+   */
+  get(url) {
+    const entry = this.entries.get(url);
+    if (entry && entry.state === TextureState.LOADED) {
+      // Move to end of access order
+      const index = this.accessOrder.indexOf(url);
+      if (index > -1) {
+        this.accessOrder.splice(index, 1);
+      }
+      this.accessOrder.push(url);
+      return entry.texture;
     }
     return null;
   }
 
+  /**
+   * Legacy set method for compatibility
+   */
   set(url, texture) {
-    // Evict oldest if at capacity
-    while (this.cache.size >= this.maxSize && this.accessOrder.length > 0) {
-      const oldest = this.accessOrder.shift();
-      const oldTexture = this.cache.get(oldest);
-      if (oldTexture) {
-        oldTexture.dispose();
-      }
-      this.cache.delete(oldest);
-    }
+    this._evictIfNeeded();
 
-    this.cache.set(url, texture);
+    const entry = new TextureEntry(url);
+    entry.state = TextureState.LOADED;
+    entry.texture = texture;
+
+    this.entries.set(url, entry);
     this.accessOrder.push(url);
   }
 
   dispose() {
-    this.cache.forEach(texture => {
-      if (texture) {
-        texture.dispose();
+    // Clear all timeouts and dispose textures
+    this.entries.forEach(entry => {
+      if (entry.timeoutId) {
+        clearTimeout(entry.timeoutId);
+      }
+      if (entry.texture) {
+        entry.texture.dispose();
       }
     });
-    this.cache.clear();
+    this.entries.clear();
     this.accessOrder = [];
+
+    // Dispose placeholders
+    if (this.loadingPlaceholder) {
+      this.loadingPlaceholder.dispose();
+      this.loadingPlaceholder = null;
+    }
+    if (this.errorPlaceholder) {
+      this.errorPlaceholder.dispose();
+      this.errorPlaceholder = null;
+    }
   }
 }
 

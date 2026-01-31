@@ -137,8 +137,9 @@ export class BeanstalkScene {
     // Animation manager
     this.animationManager = new AnimationManager();
 
-    // Texture cache
+    // Texture cache with placeholders
     this.textureCache = new TextureCache(50);
+    this.textureCache.initPlaceholders(this.scene);
 
     // Handle resize
     window.addEventListener('resize', () => {

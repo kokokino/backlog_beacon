@@ -89,25 +89,14 @@ export function createGameCase(scene, textureCache) {
 
 /**
  * Apply cover texture to a game case
+ * Uses robust texture loading with retries and placeholders
  */
 export function applyGameCoverTexture(scene, mesh, coverUrl, textureCache) {
   const material = mesh.material;
 
-  // Check cache first
-  let texture = textureCache.get(coverUrl);
-
-  if (!texture) {
-    texture = new BABYLON.Texture(coverUrl, scene, false, true, BABYLON.Texture.BILINEAR_SAMPLINGMODE, null, () => {
-      // Error callback - use placeholder
-      if (texture && !texture.isReady()) {
-        const placeholderTexture = new BABYLON.Texture(noCoverDataUrl, scene);
-        material.albedoTexture = placeholderTexture;
-      }
-    });
-    textureCache.set(coverUrl, texture);
-  }
-
-  material.albedoTexture = texture;
+  // Request texture - returns placeholder immediately, updates material async when loaded
+  const currentTexture = textureCache.requestTexture(coverUrl, scene, mesh, material);
+  material.albedoTexture = currentTexture;
 }
 
 /**
