@@ -74,6 +74,7 @@ export const EditItemModal = {
       if (onClose) {
         onClose();
       }
+      m.redraw();
     } catch (err) {
       this.error = err.reason || err.message || 'Failed to update item';
       this.saving = false;
