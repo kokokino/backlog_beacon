@@ -3,12 +3,12 @@
 
 export { GameCovers } from './coversCollection.js';
 
-export { 
+export {
   CoverQueue,
   QueueStatus,
   queueCoverDownload,
   queueMultipleCoverDownloads,
-  getNextQueueItem,
+  claimNextQueueItem,
   markQueueItemCompleted,
   markQueueItemFailed,
   cleanupQueue,

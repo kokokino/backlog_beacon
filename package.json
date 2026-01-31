@@ -30,5 +30,11 @@
     },
     "testModule": "tests/main.js",
     "modern": true
+  },
+  "devDependencies": {
+    "@meteorjs/rspack": "^1.0.0",
+    "@rsdoctor/rspack-plugin": "^1.2.3",
+    "@rspack/cli": "^1.7.1",
+    "@rspack/core": "^1.7.1"
   }
 }
