@@ -4,6 +4,9 @@
 
 import * as BABYLON from '@babylonjs/core';
 
+// Enable CORS for texture loading (required for cross-origin images in WebGL)
+BABYLON.Tools.CrossOrigin = 'anonymous';
+
 // DVD case proportions (relative units)
 const CASE_WIDTH = 13.5;
 const CASE_HEIGHT = 19;
