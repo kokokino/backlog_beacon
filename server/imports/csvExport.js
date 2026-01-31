@@ -69,23 +69,21 @@ function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Export user's collection to CSV
+// Export user's collection to CSV (chunked processing to reduce memory usage)
 export async function exportCollectionCSV(userId) {
   if (!userId) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to export');
   }
-  
-  const items = await CollectionItems.find({ userId }).fetchAsync();
-  
-  if (items.length === 0) {
+
+  const CHUNK_SIZE = 200;
+
+  // Count total items first
+  const totalCount = await CollectionItems.countDocuments({ userId });
+
+  if (totalCount === 0) {
     throw new Meteor.Error('no-data', 'No collection items to export');
   }
-  
-  // Get all game IDs
-  const gameIds = items.map(item => item.gameId).filter(Boolean);
-  const games = await Games.find({ _id: { $in: gameIds } }).fetchAsync();
-  const gamesMap = new Map(games.map(g => [g._id, g]));
-  
+
   // CSV headers
   const headers = [
     'Name',
@@ -105,45 +103,78 @@ export async function exportCollectionCSV(userId) {
     'Publisher',
     'Release Year'
   ];
-  
+
   const rows = [headers.map(escapeCSV).join(',')];
-  
-  for (const item of items) {
-    const game = item.gameId ? gamesMap.get(item.gameId) : null;
-    
-    // Get storefront names
-    const storefrontNames = (item.storefronts || [])
-      .map(id => {
-        const storefront = getStorefrontById(id);
-        return storefront ? storefront.name : id;
-      })
-      .join(', ');
-    
-    // Get platforms (support both old and new format)
-    const platforms = item.platforms || (item.platform ? [item.platform] : []);
-    
-    const row = [
-      item.gameName || (game ? (game.title || game.name) : ''),
-      item.igdbId || '',
-      platforms.join(', '),
-      storefrontNames,
-      item.status || '',
-      item.favorite ? 'Yes' : 'No',
-      item.rating || '',
-      item.hoursPlayed || '',
-      formatDate(item.dateAdded),
-      formatDate(item.dateStarted),
-      formatDate(item.dateCompleted),
-      item.notes || '',
-      game ? (game.genres || []).join(', ') : '',
-      game ? game.developer : '',
-      game ? game.publisher : '',
-      game ? game.releaseYear : ''
-    ];
-    
-    rows.push(row.map(escapeCSV).join(','));
+
+  // Process in chunks to reduce memory usage
+  let skip = 0;
+  while (skip < totalCount) {
+    const items = await CollectionItems.find(
+      { userId },
+      { limit: CHUNK_SIZE, skip }
+    ).fetchAsync();
+
+    if (items.length === 0) {
+      break;
+    }
+
+    // Fetch only the games needed for this chunk (with field projection)
+    const gameIds = items.map(item => item.gameId).filter(Boolean);
+    const games = await Games.find(
+      { _id: { $in: gameIds } },
+      {
+        fields: {
+          _id: 1,
+          title: 1,
+          name: 1,
+          genres: 1,
+          developer: 1,
+          publisher: 1,
+          releaseYear: 1
+        }
+      }
+    ).fetchAsync();
+    const gamesMap = new Map(games.map(game => [game._id, game]));
+
+    for (const item of items) {
+      const game = item.gameId ? gamesMap.get(item.gameId) : null;
+
+      // Get storefront names
+      const storefrontNames = (item.storefronts || [])
+        .map(id => {
+          const storefront = getStorefrontById(id);
+          return storefront ? storefront.name : id;
+        })
+        .join(', ');
+
+      // Get platforms (support both old and new format)
+      const platforms = item.platforms || (item.platform ? [item.platform] : []);
+
+      const row = [
+        item.gameName || (game ? (game.title || game.name) : ''),
+        item.igdbId || '',
+        platforms.join(', '),
+        storefrontNames,
+        item.status || '',
+        item.favorite ? 'Yes' : 'No',
+        item.rating || '',
+        item.hoursPlayed || '',
+        formatDate(item.dateAdded),
+        formatDate(item.dateStarted),
+        formatDate(item.dateCompleted),
+        item.notes || '',
+        game ? (game.genres || []).join(', ') : '',
+        game ? game.developer : '',
+        game ? game.publisher : '',
+        game ? game.releaseYear : ''
+      ];
+
+      rows.push(row.map(escapeCSV).join(','));
+    }
+
+    skip += CHUNK_SIZE;
   }
-  
+
   return rows.join('\n');
 }
 

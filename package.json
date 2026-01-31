@@ -14,19 +14,20 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.974.0",
+    "@aws-sdk/lib-storage": "^3.980.0",
     "@babel/runtime": "^7.23.5",
     "@babylonjs/core": "^8.47.2",
     "@babylonjs/loaders": "^8.47.2",
     "@babylonjs/materials": "^8.47.2",
+    "@meteorjs/rspack": "^1.0.0",
     "@picocss/pico": "^2.1.1",
+    "@rspack/core": "^1.7.1",
     "@swc/helpers": "^0.5.17",
     "jquery": "^3.7.1",
     "jsonwebtoken": "^9.0.3",
     "meteor-node-stubs": "^1.2.12",
     "mithril": "^2.3.8",
-    "sharp": "^0.34.5",
-    "@meteorjs/rspack": "^1.0.0",
-    "@rspack/core": "^1.7.1"
+    "sharp": "^0.34.5"
   },
   "meteor": {
     "mainModule": {

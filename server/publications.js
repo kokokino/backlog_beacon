@@ -265,13 +265,36 @@ Meteor.publish('gamesByIds', function(gameIds) {
 // Publish single game
 Meteor.publish('game', function(gameId) {
   check(gameId, String);
-  
+
   if (!this.userId) {
     this.ready();
     return;
   }
-  
-  return Games.find({ _id: gameId });
+
+  return Games.find(
+    { _id: gameId },
+    {
+      fields: {
+        _id: 1,
+        igdbId: 1,
+        title: 1,
+        name: 1,
+        slug: 1,
+        summary: 1,
+        platforms: 1,
+        genres: 1,
+        releaseYear: 1,
+        developer: 1,
+        publisher: 1,
+        coverUrl: 1,
+        coverImageId: 1,
+        igdbCoverUrl: 1,
+        localCoverId: 1,
+        localCoverUrl: 1,
+        rating: 1
+      }
+    }
+  );
 });
 
 // Publish games for search/browse
@@ -444,16 +467,22 @@ Meteor.publish('collectionStorefronts', function() {
 Meteor.publish('storefronts', function() {
   return Storefronts.find(
     { isActive: true },
-    { sort: { sortOrder: 1 } }
+    {
+      sort: { sortOrder: 1 },
+      fields: { _id: 1, storefrontId: 1, name: 1, category: 1, sortOrder: 1 }
+    }
   );
 });
 
 // Publish storefronts by category
 Meteor.publish('storefrontsByCategory', function(category) {
   check(category, String);
-  
+
   return Storefronts.find(
     { isActive: true, category: category },
-    { sort: { sortOrder: 1 } }
+    {
+      sort: { sortOrder: 1 },
+      fields: { _id: 1, storefrontId: 1, name: 1, category: 1, sortOrder: 1 }
+    }
   );
 });

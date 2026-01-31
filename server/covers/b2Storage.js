@@ -1,4 +1,5 @@
 import { PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { Upload } from '@aws-sdk/lib-storage';
 import { getS3Client, getStorageConfig } from './storageClient.js';
 
 // Upload buffer to B2, returns public URL
@@ -16,6 +17,31 @@ export async function uploadToB2(buffer, key, contentType) {
     Body: buffer,
     ContentType: contentType
   }));
+
+  // Return public URL
+  return `https://${config.b2.bucketName}.s3.${config.b2.region}.backblazeb2.com/${key}`;
+}
+
+// Upload stream to B2 using multipart upload, returns public URL
+export async function uploadStreamToB2(stream, key, contentType) {
+  const s3 = getS3Client();
+  const config = getStorageConfig();
+
+  if (!s3 || !config.b2) {
+    throw new Error('B2 storage not configured');
+  }
+
+  const upload = new Upload({
+    client: s3,
+    params: {
+      Bucket: config.b2.bucketName,
+      Key: key,
+      Body: stream,
+      ContentType: contentType
+    }
+  });
+
+  await upload.done();
 
   // Return public URL
   return `https://${config.b2.bucketName}.s3.${config.b2.region}.backblazeb2.com/${key}`;

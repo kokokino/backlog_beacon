@@ -11,9 +11,25 @@ import { WebApp } from 'meteor/webapp';
 const rateLimits = new Map();
 const RATE_LIMIT = 50; // requests per second per IP
 const RATE_WINDOW = 1000; // 1 second
+const MAX_RATE_LIMIT_ENTRIES = 10000; // Cap to prevent unbounded memory growth
+
+function evictExpiredEntries() {
+  const now = Date.now();
+  for (const [ip, record] of rateLimits.entries()) {
+    if (now > record.resetAt + RATE_WINDOW) {
+      rateLimits.delete(ip);
+    }
+  }
+}
 
 function checkRateLimit(ip) {
   const now = Date.now();
+
+  // If map exceeds limit, evict expired entries immediately
+  if (rateLimits.size >= MAX_RATE_LIMIT_ENTRIES) {
+    evictExpiredEntries();
+  }
+
   const record = rateLimits.get(ip) || { count: 0, resetAt: now + RATE_WINDOW };
 
   if (now > record.resetAt) {
@@ -29,12 +45,7 @@ function checkRateLimit(ip) {
 
 // Clean up stale rate limit entries periodically (every 60 seconds)
 setInterval(() => {
-  const now = Date.now();
-  for (const [ip, record] of rateLimits.entries()) {
-    if (now > record.resetAt + RATE_WINDOW) {
-      rateLimits.delete(ip);
-    }
-  }
+  evictExpiredEntries();
 }, 60000);
 
 WebApp.connectHandlers.use('/api/image-proxy', async (req, res) => {

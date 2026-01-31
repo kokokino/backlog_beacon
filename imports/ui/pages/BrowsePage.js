@@ -23,7 +23,6 @@ const BrowseContent = {
     this.igdbConfigured = true;
     this.addingGame = null;
     this.subscription = null;
-    this.collectionSub = null;
     this.computation = null;
     this.searchDebounceTimer = null;
     this.searchFeedbackTimer = null;
@@ -42,9 +41,6 @@ const BrowseContent = {
   onremove(vnode) {
     if (this.subscription) {
       this.subscription.stop();
-    }
-    if (this.collectionSub) {
-      this.collectionSub.stop();
     }
     if (this.computation) {
       this.computation.stop();
@@ -96,9 +92,6 @@ const BrowseContent = {
     if (this.subscription) {
       this.subscription.stop();
     }
-    if (this.collectionSub) {
-      this.collectionSub.stop();
-    }
     if (this.computation) {
       this.computation.stop();
     }
@@ -115,16 +108,15 @@ const BrowseContent = {
     }
 
     this.subscription = Meteor.subscribe('gamesBrowse', options);
-    this.collectionSub = Meteor.subscribe('userCollection', {});
 
-    // Fetch ALL gameIds for collection check (not limited by subscription)
+    // Fetch ALL gameIds for collection check via method (no subscription needed)
     Meteor.callAsync('collection.getGameIds').then(gameIds => {
       this.collectionGameIds = new Set(gameIds);
       m.redraw();
     });
 
     this.computation = Tracker.autorun(() => {
-      const ready = this.subscription.ready() && this.collectionSub.ready();
+      const ready = this.subscription.ready();
 
       if (ready) {
         this.localGames = Games.find({}, { sort: { title: 1 } }).fetch();

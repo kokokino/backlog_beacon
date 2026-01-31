@@ -260,13 +260,104 @@ Meteor.methods({
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
-    
+
     await checkRateLimit(this.userId, 'collection.getStats');
-    
-    const items = await CollectionItems.find({ userId: this.userId }).fetchAsync();
-    
+
+    const rawCollection = CollectionItems.rawCollection();
+
+    // Use $facet to compute all stats in a single aggregation pass
+    const pipeline = [
+      { $match: { userId: this.userId } },
+      {
+        $facet: {
+          // Total count and status counts
+          statusCounts: [
+            {
+              $group: {
+                _id: '$status',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          // Favorites count
+          favorites: [
+            { $match: { favorite: true } },
+            { $count: 'count' }
+          ],
+          // Hours and rating totals
+          totals: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: 1 },
+                totalHours: { $sum: { $ifNull: ['$hoursPlayed', 0] } },
+                ratingSum: {
+                  $sum: {
+                    $cond: [{ $gt: ['$rating', 0] }, '$rating', 0]
+                  }
+                },
+                ratingCount: {
+                  $sum: {
+                    $cond: [{ $gt: ['$rating', 0] }, 1, 0]
+                  }
+                }
+              }
+            }
+          ],
+          // Platform counts (unwind both platforms array and single platform field)
+          platformCounts: [
+            {
+              $project: {
+                platforms: {
+                  $cond: {
+                    if: { $gt: [{ $size: { $ifNull: ['$platforms', []] } }, 0] },
+                    then: '$platforms',
+                    else: { $cond: [{ $ne: ['$platform', null] }, ['$platform'], []] }
+                  }
+                }
+              }
+            },
+            { $unwind: '$platforms' },
+            {
+              $group: {
+                _id: '$platforms',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          // Storefront counts
+          storefrontCounts: [
+            { $unwind: { path: '$storefronts', preserveNullAndEmptyArrays: false } },
+            {
+              $group: {
+                _id: '$storefronts',
+                count: { $sum: 1 }
+              }
+            }
+          ],
+          // Recently added (top 5)
+          recentlyAdded: [
+            { $sort: { dateAdded: -1 } },
+            { $limit: 5 },
+            { $project: { _id: 1 } }
+          ],
+          // Recently completed (top 5)
+          recentlyCompleted: [
+            { $match: { status: 'completed', dateCompleted: { $ne: null } } },
+            { $sort: { dateCompleted: -1 } },
+            { $limit: 5 },
+            { $project: { _id: 1 } }
+          ]
+        }
+      }
+    ];
+
+    const results = await rawCollection.aggregate(pipeline).toArray();
+    const facets = results[0] || {};
+
+    // Transform aggregation results into the expected format
     const stats = {
-      total: items.length,
+      total: 0,
       byStatus: {
         backlog: 0,
         playing: 0,
@@ -282,56 +373,59 @@ Meteor.methods({
       recentlyAdded: [],
       recentlyCompleted: []
     };
-    
-    let ratingSum = 0;
-    let ratingCount = 0;
-    
-    for (const item of items) {
-      if (stats.byStatus[item.status] !== undefined) {
-        stats.byStatus[item.status]++;
-      }
-      
-      if (item.favorite) {
-        stats.favorites++;
-      }
-      
-      if (item.hoursPlayed) {
-        stats.totalHoursPlayed += item.hoursPlayed;
-      }
-      
-      if (item.rating) {
-        ratingSum += item.rating;
-        ratingCount++;
-      }
-      
-      // Count platforms (support both old and new format)
-      const platforms = item.platforms || (item.platform ? [item.platform] : []);
-      for (const platform of platforms) {
-        stats.platformCounts[platform] = (stats.platformCounts[platform] || 0) + 1;
-      }
-      
-      // Count storefronts
-      for (const storefront of (item.storefronts || [])) {
-        stats.storefrontCounts[storefront] = (stats.storefrontCounts[storefront] || 0) + 1;
+
+    // Process totals
+    if (facets.totals && facets.totals[0]) {
+      const totals = facets.totals[0];
+      stats.total = totals.total || 0;
+      stats.totalHoursPlayed = totals.totalHours || 0;
+      if (totals.ratingCount > 0) {
+        stats.averageRating = Math.round((totals.ratingSum / totals.ratingCount) * 10) / 10;
       }
     }
-    
-    if (ratingCount > 0) {
-      stats.averageRating = Math.round((ratingSum / ratingCount) * 10) / 10;
+
+    // Process status counts
+    if (facets.statusCounts) {
+      for (const item of facets.statusCounts) {
+        if (stats.byStatus[item._id] !== undefined) {
+          stats.byStatus[item._id] = item.count;
+        }
+      }
     }
-    
-    const recentlyAdded = await CollectionItems.find(
-      { userId: this.userId },
-      { sort: { dateAdded: -1 }, limit: 5 }
-    ).fetchAsync();
-    stats.recentlyAdded = recentlyAdded.map(item => item._id);
-    
-    const recentlyCompleted = await CollectionItems.find(
-      { userId: this.userId, status: 'completed', dateCompleted: { $ne: null } },
-      { sort: { dateCompleted: -1 }, limit: 5 }
-    ).fetchAsync();
-    stats.recentlyCompleted = recentlyCompleted.map(item => item._id);
-    
+
+    // Process favorites
+    if (facets.favorites && facets.favorites[0]) {
+      stats.favorites = facets.favorites[0].count;
+    }
+
+    // Process platform counts
+    if (facets.platformCounts) {
+      for (const item of facets.platformCounts) {
+        if (item._id) {
+          stats.platformCounts[item._id] = item.count;
+        }
+      }
+    }
+
+    // Process storefront counts
+    if (facets.storefrontCounts) {
+      for (const item of facets.storefrontCounts) {
+        if (item._id) {
+          stats.storefrontCounts[item._id] = item.count;
+        }
+      }
+    }
+
+    // Process recently added
+    if (facets.recentlyAdded) {
+      stats.recentlyAdded = facets.recentlyAdded.map(item => item._id);
+    }
+
+    // Process recently completed
+    if (facets.recentlyCompleted) {
+      stats.recentlyCompleted = facets.recentlyCompleted.map(item => item._id);
+    }
+
     return stats;
   },
 

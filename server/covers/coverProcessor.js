@@ -1,5 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { Random } from 'meteor/random';
+import { Readable } from 'stream';
 import sharp from 'sharp';
 import { GameCovers } from './coversCollection.js';
 import {
@@ -13,7 +14,7 @@ import {
 import { Games } from '../../imports/lib/collections/games.js';
 import { getCoverUrl } from '../igdb/client.js';
 import { isUsingB2 } from './storageClient.js';
-import { uploadToB2 } from './b2Storage.js';
+import { uploadToB2, uploadStreamToB2 } from './b2Storage.js';
 
 // Processing state - instanceId ensures each server instance is identifiable
 let instanceId = null;
@@ -23,34 +24,26 @@ const PROCESS_INTERVAL_MS = 2000;
 const IGDB_REQUEST_DELAY_MS = 300;
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Convert image buffer to WebP
-async function convertToWebP(imageBuffer) {
-  const webpBuffer = await sharp(imageBuffer)
-    .webp({
-      quality: 75,
-      effort: 6
-    })
-    .toBuffer();
-  
-  return webpBuffer;
-}
-
-// Download image from IGDB
-async function downloadIgdbCover(igdbImageId) {
+// Download image from IGDB and return response for streaming
+async function downloadIgdbCoverResponse(igdbImageId) {
   const url = getCoverUrl(igdbImageId, 'cover_big');
-  
+
   if (!url) {
     throw new Error('Invalid IGDB image ID');
   }
-  
-  // console.log(`CoverProcessor: Downloading from ${url}`);
-  
+
   const response = await fetch(url);
-  
+
   if (!response.ok) {
     throw new Error(`Failed to download cover: ${response.status} ${response.statusText}`);
   }
-  
+
+  return response;
+}
+
+// Download image from IGDB as buffer (for local storage)
+async function downloadIgdbCover(igdbImageId) {
+  const response = await downloadIgdbCoverResponse(igdbImageId);
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
@@ -59,26 +52,45 @@ async function downloadIgdbCover(igdbImageId) {
 async function processQueueItem(item) {
   // console.log(`CoverProcessor: Processing game ${item.gameId}, image ${item.igdbImageId}`);
 
-  // Download from IGDB
-  const imageBuffer = await downloadIgdbCover(item.igdbImageId);
-  // console.log(`CoverProcessor: Downloaded ${imageBuffer.length} bytes`);
-
-  // Convert to WebP
-  const webpBuffer = await convertToWebP(imageBuffer);
-  // console.log(`CoverProcessor: Converted to WebP, ${webpBuffer.length} bytes`);
-
   const fileName = `${item.igdbImageId}.webp`;
 
   let coverUrl;
   let coverId = null;
 
   if (isUsingB2()) {
-    // Upload directly to B2
-    // Use a directory structure based on gameId to distribute files
+    // Stream directly from IGDB through Sharp to B2 (no buffering)
+    const response = await downloadIgdbCoverResponse(item.igdbImageId);
+    const nodeStream = Readable.fromWeb(response.body);
+
+    // Create Sharp transform stream for WebP conversion
+    const sharpTransform = sharp()
+      .webp({
+        quality: 75,
+        effort: 6
+      });
+
+    // Pipe through Sharp to create a readable stream of WebP data
+    const webpStream = nodeStream.pipe(sharpTransform);
+
+    // Upload stream directly to B2
     const key = `covers/${item.gameId.slice(0, 1)}/${item.gameId.slice(1, 2)}/${fileName}`;
-    coverUrl = await uploadToB2(webpBuffer, key, 'image/webp');
-    console.log(`CoverProcessor: Uploaded to B2: ${coverUrl}`);
+    coverUrl = await uploadStreamToB2(webpStream, key, 'image/webp');
+    console.log(`CoverProcessor: Streamed to B2: ${coverUrl}`);
   } else {
+    // For local storage, we still need buffers due to FilesCollection API
+    // But we can stream through Sharp to avoid double-buffering
+    const response = await downloadIgdbCoverResponse(item.igdbImageId);
+    const nodeStream = Readable.fromWeb(response.body);
+
+    // Stream directly through Sharp to get WebP buffer
+    const webpBuffer = await nodeStream.pipe(
+      sharp()
+        .webp({
+          quality: 75,
+          effort: 6
+        })
+    ).toBuffer();
+
     // Store locally via FilesCollection
     const fileObj = await GameCovers.writeAsync(webpBuffer, {
       fileName: fileName,
