@@ -1485,6 +1485,7 @@ dialog article footer button {
   height: 100%;
   cursor: grab;
   outline: none;
+  touch-action: none;
 }
 
 .beanstalk-canvas:active {
@@ -1564,6 +1565,7 @@ dialog article footer button {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   cursor: pointer;
+  touch-action: none;
 }
 
 .beanstalk-scrollbar-track:hover {

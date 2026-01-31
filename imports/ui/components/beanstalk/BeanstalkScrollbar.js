@@ -21,10 +21,12 @@ export const BeanstalkScrollbar = {
     // Bind methods for event listeners
     this.onPointerMove = this.handlePointerMove.bind(this, vnode);
     this.onPointerUp = this.handlePointerUp.bind(this, vnode);
+    this.onPointerCancel = this.handlePointerCancel.bind(this, vnode);
 
     // Add global listeners for drag handling
     document.addEventListener('pointermove', this.onPointerMove);
     document.addEventListener('pointerup', this.onPointerUp);
+    document.addEventListener('pointercancel', this.onPointerCancel);
   },
 
   onremove(vnode) {
@@ -33,6 +35,9 @@ export const BeanstalkScrollbar = {
     }
     if (this.onPointerUp) {
       document.removeEventListener('pointerup', this.onPointerUp);
+    }
+    if (this.onPointerCancel) {
+      document.removeEventListener('pointercancel', this.onPointerCancel);
     }
   },
 
@@ -64,6 +69,15 @@ export const BeanstalkScrollbar = {
       if (event.target.hasPointerCapture && event.target.hasPointerCapture(event.pointerId)) {
         event.target.releasePointerCapture(event.pointerId);
       }
+      m.redraw();
+    }
+  },
+
+  handlePointerCancel(vnode, event) {
+    if (this.isDragging && event.pointerId === this.activePointerId) {
+      this.isDragging = false;
+      this.activePointerId = null;
+      this.lastSeekTime = 0;
       m.redraw();
     }
   },
