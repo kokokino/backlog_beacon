@@ -21,7 +21,9 @@
     "jsonwebtoken": "^9.0.3",
     "meteor-node-stubs": "^1.2.12",
     "mithril": "^2.3.8",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "@meteorjs/rspack": "^1.0.0",
+    "@rspack/core": "^1.7.1"
   },
   "meteor": {
     "mainModule": {
@@ -32,9 +34,7 @@
     "modern": true
   },
   "devDependencies": {
-    "@meteorjs/rspack": "^1.0.0",
     "@rsdoctor/rspack-plugin": "^1.2.3",
-    "@rspack/cli": "^1.7.1",
-    "@rspack/core": "^1.7.1"
+    "@rspack/cli": "^1.7.1"
   }
 }
