@@ -27,6 +27,9 @@ import './publications/importProgressPublication.js';
 // Import scheduled jobs
 import './scheduled/gameRefresh.js';
 
+// Import HTTP routes
+import './routes/imageProxy.js';
+
 // Import migrations
 import './migrations/0_steps.js';
 

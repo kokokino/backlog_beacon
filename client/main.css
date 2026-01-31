@@ -1649,6 +1649,36 @@ dialog article footer button {
   }
 }
 
+/* Toast Notifications */
+.toast-message {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--pico-primary);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 8px;
+  z-index: 10000;
+  animation: toast-in 0.3s ease;
+}
+
+.toast-message.fade-out {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 /* Bookshelf View */
 .bookshelf-container {
   position: relative;

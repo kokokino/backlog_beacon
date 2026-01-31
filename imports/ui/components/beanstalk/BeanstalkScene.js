@@ -10,6 +10,7 @@ import { ObjectPool, TextureCache, AnimationManager, Tween, Easing } from './Bea
 import { GameCase3D, getCoverUrl } from './GameCase3D.js';
 import { BeanstalkInput } from './BeanstalkInput.js';
 import { BeanstalkEffects } from './BeanstalkEffects.js';
+import { showToast } from '../../lib/toast.js';
 
 const TO_RADIANS = Math.PI / 180;
 const MIN_LEAF_SPACING = 4; //12; // Minimum ring indices between leaves on same side
@@ -243,12 +244,17 @@ export class BeanstalkScene {
   initInput() {
     this.input = new BeanstalkInput(this.canvas, {
       onGameSelect: (metadata) => {
-        if (metadata.collectionItem) {
-          this.onGameSelect(metadata.gameIndex);
-          if (this.effects) {
-            this.effects.highlightGame(metadata.gameData ?
-              this.gameCases.find(c => c.gameIndex === metadata.gameIndex)?.position :
-              new BABYLON.Vector3(0, 0, 0));
+        if (metadata.gameIndex >= 0) {
+          if (metadata.collectionItem) {
+            this.onGameSelect(metadata.gameIndex);
+            if (this.effects) {
+              this.effects.highlightGame(metadata.gameData ?
+                this.gameCases.find(c => c.gameIndex === metadata.gameIndex)?.position :
+                new BABYLON.Vector3(0, 0, 0));
+            }
+          } else {
+            // Data not loaded yet - show toast
+            showToast('Loading game...');
           }
         }
       }
@@ -1050,7 +1056,8 @@ export class BeanstalkScene {
       if (gameCase.gameIndex >= 0 && gameCase.gameIndex < items.length) {
         const item = items[gameCase.gameIndex];
         const game = item ? games[item.gameId] : null;
-        if (item && game !== gameCase.gameData) {
+        // Update if: item exists AND (we didn't have collectionItem before OR game changed)
+        if (item && (!gameCase.collectionItem || game !== gameCase.gameData)) {
           gameCase.setGame(game, item, gameCase.gameIndex);
         }
       }

@@ -62,6 +62,8 @@ class TextureEntry {
     this.timeoutMs = 15000;
     this.timeoutId = null;
     this.callbacks = [];  // {mesh, material} to update on load
+    this.triedProxy = false;  // Whether we've tried the CORS proxy fallback
+    this.loadStartTime = null;  // When the current load attempt started
   }
 }
 
@@ -166,6 +168,7 @@ export class TextureCache {
    */
   _startLoad(entry, scene) {
     entry.state = TextureState.LOADING;
+    entry.loadStartTime = Date.now();
 
     import('@babylonjs/core').then((BABYLON) => {
       // Set up timeout
@@ -227,6 +230,19 @@ export class TextureCache {
       entry.texture = null;
     }
 
+    // CORS detection: fast failures (< 1 second) on cross-origin URLs likely indicate CORS
+    const loadDuration = Date.now() - (entry.loadStartTime || 0);
+    const isFastFail = loadDuration < 1000;
+    const isCrossOrigin = entry.url.startsWith('http') &&
+      !entry.url.includes(window.location.hostname);
+
+    // If fast fail on cross-origin URL and haven't tried proxy yet, try the server proxy
+    if (!entry.triedProxy && isFastFail && isCrossOrigin) {
+      entry.triedProxy = true;
+      this._tryProxyLoad(entry, scene);
+      return;
+    }
+
     entry.retryCount++;
 
     if (entry.retryCount < entry.maxRetries) {
@@ -251,6 +267,34 @@ export class TextureCache {
         this.accessOrder.splice(index, 1);
       }
     }
+  }
+
+  /**
+   * Try loading the texture via the server-side CORS proxy
+   */
+  _tryProxyLoad(entry, scene) {
+    // Build proxy URL
+    const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(entry.url)}`;
+
+    entry.state = TextureState.LOADING;
+    entry.loadStartTime = Date.now();
+
+    import('@babylonjs/core').then((BABYLON) => {
+      entry.timeoutId = setTimeout(() => {
+        this._onLoadError(entry, scene, 'Proxy timeout');
+      }, entry.timeoutMs);
+
+      // Create texture from proxy URL (same-origin, no CORS issues)
+      entry.texture = new BABYLON.Texture(
+        proxyUrl,
+        scene,
+        false,  // noMipmap
+        true,   // invertY
+        BABYLON.Texture.BILINEAR_SAMPLINGMODE,
+        () => this._onLoadSuccess(entry),
+        () => this._onLoadError(entry, scene, 'Proxy load failed')
+      );
+    });
   }
 
   /**

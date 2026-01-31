@@ -133,7 +133,7 @@ export class BeanstalkInput {
     // Check for game selection on click (not drag)
     if (wasClick && this.scene) {
       const pickResult = this.scene.pick(this.pointerStartX, this.pointerStartY);
-      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameData) {
+      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameIndex >= 0) {
         this.onGameSelect(pickResult.pickedMesh.metadata);
       }
     }
@@ -193,7 +193,7 @@ export class BeanstalkInput {
     // Check for game selection on tap (not drag)
     if (wasClick && this.scene) {
       const pickResult = this.scene.pick(this.pointerStartX, this.pointerStartY);
-      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameData) {
+      if (pickResult.hit && pickResult.pickedMesh && pickResult.pickedMesh.metadata?.gameIndex >= 0) {
         this.onGameSelect(pickResult.pickedMesh.metadata);
       }
     }
