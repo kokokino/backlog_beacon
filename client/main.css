@@ -71,6 +71,17 @@ header nav a.logout {
   cursor: pointer;
 }
 
+/* Theme Selector in Nav */
+header nav .theme-selector {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  margin: 0;
+  width: auto;
+  min-width: 70px;
+  background: transparent;
+  border: 1px solid var(--pico-muted-border-color);
+}
+
 .page-header {
   display: flex;
   justify-content: space-between;

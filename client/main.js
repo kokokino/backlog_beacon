@@ -18,6 +18,7 @@ import { NotLoggedIn } from '../imports/ui/pages/NotLoggedIn.js';
 import { NoSubscription } from '../imports/ui/pages/NoSubscription.js';
 import { SessionExpired } from '../imports/ui/pages/SessionExpired.js';
 import { SsoCallback } from '../imports/ui/pages/SsoCallback.js';
+import { initializeTheme } from '../imports/ui/components/ThemeSelector.js';
 
 window.Games = Games;
 window.CollectionItems = CollectionItems;
@@ -81,5 +82,6 @@ function initializeApp() {
 }
 
 Meteor.startup(() => {
+  initializeTheme();
   initializeApp();
 });

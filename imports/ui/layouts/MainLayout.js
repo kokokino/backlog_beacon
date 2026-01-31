@@ -1,5 +1,6 @@
 import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
+import { ThemeSelector } from '../components/ThemeSelector.js';
 
 export const MainLayout = {
   view(vnode) {
@@ -38,7 +39,8 @@ export const MainLayout = {
             )
           ]),
           m('ul', [
-            isLoggingIn ? 
+            m('li', m(ThemeSelector)),
+            isLoggingIn ?
               m('li', m('span', 'Loading...')) :
             user ? [
               m('li', m('span.username', user.username || 'User')),
