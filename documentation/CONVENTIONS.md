@@ -65,13 +65,47 @@ Check the individual app repositories for contribution guidelines and issue trac
 4. Use Mithril as much as possible but it's ok to integrate with Blaze at times for packages such as accounts-ui. Avoid using other libraries like React as much as possible unless specifically instructed to do so for a very particular reason. Mithril is good at being able to play nice with other UI libraries and frameworks when needed. 
 
 ## Javascript style guide
-1. Always think about security and protecting from malicious users. 
-2. Think about rate limiting and potential exploits. 
-3. Always use curly braces with "if" blocks even if they are very simple. 
-4. Avoid early returns as much as possible. Prefer for functions to have a single return statement at the end. 
-5. Use keyword "const" for variable names as much as possible unless it needs to be "let" and generally avoid the use of "var". 
-6. Every variable declaration should be on its own line. Do not use the comma syntax to define multiple at once. 
-7. Give every variable a readable word name like "document" and avoid acronyms like "doc" - The only exception is simple counters where a variable like "i" can be acceptable but even then "count" is preferred. 
+1. Always think about security and protecting from malicious users.
+2. Think about rate limiting and potential exploits.
+3. Always use curly braces with "if" blocks even if they are very simple.
+4. Avoid early returns as much as possible. Prefer for functions to have a single return statement at the end.
+5. Use keyword "const" for variable names as much as possible unless it needs to be "let" and generally avoid the use of "var".
+6. Every variable declaration should be on its own line. Do not use the comma syntax to define multiple at once.
+7. Give every variable a readable word name like "document" and avoid acronyms like "doc" - The only exception is simple counters where a variable like "i" can be acceptable but even then "count" is preferred.
+
+## Method pattern
+All Meteor methods should follow this structure:
+1. Validate inputs with `check()` and `Match`
+2. Check authentication: `if (!this.userId) throw new Meteor.Error('not-authorized', ...)`
+3. Call rate limiting: `await checkRateLimit(this.userId, 'methodName')`
+4. Perform business logic
+5. Return explicit values
+
+## Publication pattern
+All publications should:
+1. Check `this.userId` first, call `this.ready()` if not authenticated
+2. Use explicit field projections for security and performance
+3. Cap pagination limits: `Math.min(options.limit || 50, 200)`
+
+## Collection constants
+Export status constants from collection files and use them instead of string literals:
+```javascript
+export const COLLECTION_STATUSES = {
+  BACKLOG: 'backlog',
+  PLAYING: 'playing',
+  COMPLETED: 'completed',
+  ABANDONED: 'abandoned',
+  WISHLIST: 'wishlist'
+};
+```
+
+## Migration naming
+Database migrations use sequential numbering: `1_create_indexes.js`, `2_seed_storefronts.js`, etc.
+
+## Rate limiting
+Use distributed rate limiting via MongoDB atomic operations for multi-instance safety:
+- Window-based: 10 requests per second per user for methods
+- Cooldown-based: one request per interval for sensitive operations
 
 ---
-*Last updated: 2026‑01‑18*
+*Last updated: 2026‑01‑31*

@@ -13,6 +13,9 @@ npm run dev                  # Run dev server on port 3020 with settings
 npm test                     # Run tests once with Mocha
 npm run test-app             # Run tests in watch mode with full app
 npm run visualize            # Production build with bundle analyzer
+
+# Run specific test by describe/it name
+TEST_GREP="SSO Token" npm test
 ```
 
 Note: The Hub must be running (usually on port 3000) for SSO authentication to work.
@@ -26,6 +29,7 @@ Note: The Hub must be running (usually on port 3000) for SSO authentication to w
 - **sharp** - Image processing (JPEG to WebP for covers)
 - **ostrio:files** - File serving from disk
 - **quave:migrations** - Database migrations
+- **Babylon.js 8** - 3D beanstalk visualization
 
 ## Architecture
 
@@ -39,9 +43,10 @@ Note: The Hub must be running (usually on port 3000) for SSO authentication to w
 ### Key Directories
 - `imports/hub/` - SSO validation, Hub API client, subscription checks
 - `imports/ui/` - Mithril components (pages/, components/, layouts/)
-- `imports/lib/collections/` - MongoDB collections (games, collectionItems, storefronts)
+- `imports/lib/collections/` - MongoDB collections with schema docs and exported constants
 - `server/covers/` - Background cover image processing queue
-- `server/migrations/` - Sequential database migrations
+- `server/migrations/` - Sequential migrations (numbered `1_`, `2_`, etc.)
+- `server/lib/` - Utilities like distributed rate limiting
 - `cdn/` - Generated cover images (gitignored)
 
 ### Data Flow
@@ -95,3 +100,110 @@ oninit() {
 ### Protected Routes
 - `RequireAuth` HOC - redirects unauthenticated users
 - `RequireSubscription` HOC - checks product access via Hub
+
+### Meteor Methods
+All methods follow this pattern (see `server/methods.js`):
+```javascript
+async 'collection.addItem'(gameId, platform, status = 'backlog') {
+  check(gameId, String);
+  check(platform, String);
+
+  if (!this.userId) {
+    throw new Meteor.Error('not-authorized', 'You must be logged in');
+  }
+
+  await checkRateLimit(this.userId, 'collection.addItem');
+
+  // Business logic...
+  return itemId;
+}
+```
+
+### Publications
+All publications check auth first and use explicit field projections:
+```javascript
+Meteor.publish('userCollection', async function(options = {}) {
+  if (!this.userId) {
+    this.ready();
+    return;
+  }
+
+  return CollectionItems.find(
+    { userId: this.userId },
+    { fields: { gameId: 1, status: 1, rating: 1 }, limit: Math.min(options.limit || 50, 200) }
+  );
+});
+```
+
+### MongoDB Aggregations
+Complex queries use `$facet` for single-pass computation (see `collection.getStats`):
+```javascript
+const pipeline = [
+  { $match: { userId: this.userId } },
+  { $facet: {
+    statusCounts: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+    platformCounts: [{ $unwind: '$platforms' }, { $group: { _id: '$platforms', count: { $sum: 1 } } }],
+    totals: [{ $group: { _id: null, total: { $sum: 1 }, hours: { $sum: '$hoursPlayed' } } }]
+  }}
+];
+```
+
+## Rate Limiting
+
+Distributed rate limiting via MongoDB atomic operations (`server/lib/distributedRateLimit.js`):
+- **Window-based**: `checkDistributedRateLimit(key, maxRequests, windowMs)` - 10 req/sec/user for methods
+- **Cooldown-based**: `checkCooldownRateLimit(key, cooldownMs)` - one request per interval
+- Works across multiple server instances without distributed locks
+
+## Cover Processing Pipeline
+
+Background queue system in `server/covers/`:
+- `CoverQueue` collection tracks pending/processing/completed items
+- Atomic claiming with `findOneAndUpdate` ensures single instance processes each item
+- Streaming: IGDB → sharp (WebP conversion) → B2/local storage (no RAM buffering)
+- Priority system: user-accessed games processed before bulk imports
+- Max 3 retries before marking failed
+
+## Multi-Instance Deployment
+
+Settings control which instances run background jobs:
+```json
+{
+  "private": {
+    "isWorkerInstance": true,   // Runs cover processor
+    "isSchedulerInstance": true // Runs scheduled jobs (game refresh)
+  }
+}
+```
+
+## Backward Compatibility
+
+Schema changes handled gracefully:
+- `platform` (string) vs `platforms` (array) - queries check both: `{ $or: [{ platforms: value }, { platform: value }] }`
+- UI components handle both formats with fallback logic
+
+## Data Denormalization
+
+For read performance, some fields are duplicated:
+- `gameName` stored on CollectionItems (avoids join for search)
+- Update denormalized fields when source changes
+
+## Collection Constants
+
+Collections export status constants - use these instead of string literals:
+```javascript
+import { COLLECTION_STATUSES, STATUS_LABELS } from '/imports/lib/collections/collectionItems.js';
+
+// COLLECTION_STATUSES.BACKLOG, .PLAYING, .COMPLETED, .ABANDONED, .WISHLIST
+// STATUS_LABELS.backlog → "Backlog", etc.
+```
+
+## Error Handling
+
+Methods throw `Meteor.Error(code, message)`:
+- `'not-authorized'` - user not logged in
+- `'invalid-status'` - validation failed
+- `'game-not-found'` - resource missing
+- `'rate-limited'` - too many requests
+
+UI displays `error.reason || error.message` in modals/toasts.

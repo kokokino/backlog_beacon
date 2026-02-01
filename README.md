@@ -1,6 +1,6 @@
 # Backlog Beacon
 
-A video game collection management app for the [Kokokino](https://www.kokokino.com/) ecosystem. Track your games, import from Darkadia, and browse your collection on a beautiful 3D bookshelf.
+A video game collection management app for the [Kokokino](https://www.kokokino.com/) ecosystem. Track your games, import from Darkadia, and browse your collection on a beautiful 3D beanstalk.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Backlog Beacon is a fully functional Meteor spoke app that integrates with the K
 
 1. **Track their video game collection** – Record games you own, are playing, have completed, or plan to play
 2. **Import from Darkadia** – Seamlessly import your existing collection from Darkadia CSV exports
-3. **Browse in 3D** – Visualize your collection on an interactive 3D bookshelf powered by Babylon.js
+3. **Browse in 3D** – Visualize your collection on an interactive 3D beanstalk powered by Babylon.js
 4. **Stay organized** – Filter, sort, and search your collection with powerful tools
 
 As a Kokokino spoke app, Backlog Beacon relies on the Hub for user authentication and subscription management, ensuring a secure and consistent experience across the ecosystem
@@ -39,8 +39,8 @@ Backlog Beacon follows the Kokokino Hub & Spoke architecture:
 
 ## Features
 
-### 1. Game Collection Management                            
-- Add games to your collection with status (backlog, playing, completed, abandoned)
+### 1. Game Collection Management
+- Add games to your collection with status (backlog, playing, completed, abandoned, wishlist)
 - Rate games and add notes, hours played, and completion dates
 - Filter and search by platform, genre, status, and more
 - Bulk edit and delete operations
@@ -51,8 +51,8 @@ Backlog Beacon follows the Kokokino Hub & Spoke architecture:
 - Preview unmatched games before finalizing import       
 - Merge duplicates and handle conflicts gracefully
 
-### 3. 3D Bookshelf Visualization                               
-- Interactive 3D bookshelf built with Babylon.js     
+### 3. 3D Beanstalk Visualization                               
+- Interactive 3D beanstalk built with Babylon.js     
 - Flyweight rendering for performance with large collections  
 - Click books to view game details                        
 - Smooth camera controls (pan, zoom, rotate)
@@ -72,7 +72,7 @@ Backlog Beacon follows the Kokokino Hub & Spoke architecture:
 
 ### Prerequisites
 - Meteor 3+
-- Node.js 20+
+- Node.js 22+
 - Access to a running Kokokino Hub instance (local or production)
 
 ## Preferred Tech Stack
@@ -115,12 +115,14 @@ We focus on simplicity as a super‑power:
        "appName": "Backlog Beacon",
        "appId": "backlog_beacon",
        "hubUrl": "http://localhost:3000",
-       "requiredProducts": ["base_monthly"]
+       "requiredProducts": ["base-monthly"]
      },
      "private": {
        "hubApiKey": "your-backlog-beacon-api-key-from-hub",
        "hubApiUrl": "http://localhost:3000/api/spoke",
-       "hubPublicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+       "hubPublicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+       "isWorkerInstance": true,
+       "isSchedulerInstance": true
      }
    }
    ```
@@ -168,6 +170,7 @@ backlog_beacon/
 │   │   └── subscriptions.js # Subscription checking
 │   ├── ui/
 │   │   ├── components/    # Reusable UI components
+│   │   │   ├── beanstalk/
 │   │   │   ├── GameCard.js
 │   │   │   ├── BookshelfView.js
 │   │   │   ├── ImportWizard.js
@@ -193,7 +196,12 @@ backlog_beacon/
 │   ├── main.js            # Server entry point
 │   ├── accounts.js        # Custom login handlers
 │   ├── methods.js         # Meteor methods (collection, import, etc.)
-│   └── publications.js    # Data publications
+│   ├── publications.js    # Data publications
+│   ├── covers/            # Background cover image processing
+│   ├── migrations/        # Database migrations (quave:migrations)
+│   ├── lib/               # Server utilities (rate limiting)
+│   └── scheduled/         # Scheduled jobs (game refresh)
+├── cdn/                   # Generated cover images (gitignored)
 ├── tests/                 # Test files
 ├── settings.example.json  # Example configuration
 └── package.json           # Dependencies
@@ -211,10 +219,14 @@ backlog_beacon/
 - Stores status, ratings, notes, and play history
 - Linked to the game database for metadata
 
-### 3D Bookshelf (`imports/ui/components/BookshelfView.js`)
+### 3D Beanstalk (`imports/ui/components/beanstalk/`)
 - Babylon.js‑based 3D visualization
-- Flyweight pattern for rendering thousands of books efficiently
+- Flyweight pattern for rendering thousands of video games efficiently
 - Interactive camera and selection
+
+### Darkadia inspired Bookshelf (`imports/ui/components/BookshelfView.js`)
+- Flyweight pattern for rendering thousands of video games efficiently
+- Two wood grain styles for bookshelf
 
 ### Darkadia Import (`imports/ui/components/ImportWizard.js`)
 - Step‑by‑step CSV import wizard
@@ -251,7 +263,7 @@ meteor call 'admin.updateGameDatabase'
 - Sanitize user input before display
 
 ### Performance Tips
-- Use flyweight pattern for 3D bookshelf rendering
+- Use flyweight pattern for infinite video game rendering
 - Implement virtual scrolling for large lists
 - Cache game database queries
 - Use MongoDB indexes appropriately
@@ -260,7 +272,9 @@ meteor call 'admin.updateGameDatabase'
 
 Run the test suite:
 ```bash
-meteor test --driver-package meteortesting:mocha
+npm test                           # Run once
+npm run test-app                   # Watch mode with full app
+TEST_GREP="SSO Token" npm test     # Run specific tests
 ```
 
 Tests cover:
@@ -294,8 +308,8 @@ Tests cover:
    - Check that the data source files are accessible
    - Verify MongoDB connection
 
-5. **3D Bookshelf Performance Issues**
-   - Reduce the number of visible books
+5. **3D Beanstalk Performance Issues**
+   - Reduce the number of visible video games
    - Enable Babylon.js optimizations
    - Check for memory leaks in the flyweight renderer
 

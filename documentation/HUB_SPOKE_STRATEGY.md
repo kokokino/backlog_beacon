@@ -42,7 +42,7 @@ This document outlines the strategy for extending Kokokino's Hub app to support 
 │                           │       │                           │
 │   • Validates SSO tokens  │       │   • Game collection mgmt  │
 │   • Checks subscriptions  │       │   • Darkadia CSV import   │
-│   • Demo chat feature     │       │   • 3D bookshelf view     │
+│   • Demo chat feature     │       │   • 3D beanstalk view     │
 │                           │       │   • Open source game DB   │
 │   Own MongoDB instance    │       │   Own MongoDB instance    │
 └───────────────────────────┘       └───────────────────────────┘
@@ -275,11 +275,18 @@ Gets current user information (for session refresh).
 }
 ```
 
-### Rate Limiting
+### Rate Limiting (Hub API)
 
 - 100 requests per minute per spoke API key
 - 1000 requests per hour per spoke API key
 - Exceeded limits return 429 Too Many Requests
+
+### Rate Limiting (Spoke Methods)
+
+Spokes implement distributed rate limiting via MongoDB atomic operations:
+- Window-based: 10 requests per second per user for methods
+- Uses `findOneAndUpdate` with `upsert: true` for atomic increment
+- Works across multiple server instances without distributed locks
 
 ### Error Responses
 
@@ -394,7 +401,7 @@ spoke_app_name/
     "appName": "Spoke App Name",
     "appId": "spoke_app_name",
     "hubUrl": "https://kokokino.com",
-    "requiredProducts": ["base_monthly"]
+    "requiredProducts": ["base-monthly"]
   },
   "private": {
     "hubApiKey": "YOUR_SPOKE_API_KEY_HERE",
@@ -409,7 +416,7 @@ spoke_app_name/
     "appName": "Spoke App Name",
     "appId": "spoke_app_name",
     "hubUrl": "http://localhost:3000",
-    "requiredProducts": ["base_monthly"]
+    "requiredProducts": ["base-monthly"]
   },
   "private": {
     "hubApiKey": "dev-spoke-key-123",
@@ -428,7 +435,7 @@ spoke_app_name/
 Backlog Beacon is a video game collection management app, similar to Darkadia or Backloggery. It allows users to:
 - Track games they own, are playing, or have completed
 - Import collections from Darkadia CSV exports
-- Browse their collection on a 3D rendered bookshelf
+- Browse their collection on a 3D rendered beanstalk
 - (Future) Import from Steam, GOG, and other platforms
 
 ### Subscription Requirements
@@ -512,65 +519,9 @@ Meteor.methods({
 });
 ```
 
-#### 3. 3D Bookshelf (Babylon JS)
+#### 3. 3D Beanstalk (Babylon JS)
 
-Using a flyweight/virtual scrolling pattern for performance:
-
-```javascript
-// Only render visible books + buffer
-const VISIBLE_BOOKS = 50;
-const BUFFER_BOOKS = 10;
-
-class BookshelfRenderer {
-  constructor(scene, collection) {
-    this.scene = scene;
-    this.collection = collection; // Full collection data
-    this.bookMeshes = []; // Pool of reusable meshes
-    this.scrollPosition = 0;
-    
-    // Create mesh pool
-    for (let i = 0; i < VISIBLE_BOOKS + BUFFER_BOOKS; i++) {
-      this.bookMeshes.push(this.createBookMesh());
-    }
-  }
-  
-  createBookMesh() {
-    // Create a book-shaped mesh with placeholder texture
-    const book = BABYLON.MeshBuilder.CreateBox('book', {
-      width: 0.15,
-      height: 0.22,
-      depth: 0.03
-    }, this.scene);
-    return book;
-  }
-  
-  updateVisibleBooks() {
-    const startIndex = Math.floor(this.scrollPosition);
-    const visibleGames = this.collection.slice(
-      startIndex, 
-      startIndex + VISIBLE_BOOKS
-    );
-    
-    // Reposition and retexture mesh pool
-    visibleGames.forEach((game, i) => {
-      const mesh = this.bookMeshes[i];
-      mesh.position = this.calculateBookPosition(startIndex + i);
-      this.applyGameTexture(mesh, game);
-      mesh.setEnabled(true);
-    });
-    
-    // Hide unused meshes
-    for (let i = visibleGames.length; i < this.bookMeshes.length; i++) {
-      this.bookMeshes[i].setEnabled(false);
-    }
-  }
-  
-  onScroll(delta) {
-    this.scrollPosition = Math.max(0, this.scrollPosition + delta);
-    this.updateVisibleBooks();
-  }
-}
-```
+The 3D beanstalk visualization uses Babylon.js v8 to render the user's game collection as a growing vine with game covers as leaves/pods. Implementation uses flyweight pattern for performance with large collections.
 
 #### 4. Collection Data Model
 
@@ -579,14 +530,21 @@ class BookshelfRenderer {
 Games = new Mongo.Collection('games');
 // {
 //   _id: "...",
+//   igdbId: Number,           // IGDB game ID (for syncing)
 //   title: "The Legend of Zelda",
+//   name: String,             // Alias for compatibility
+//   searchName: String,       // Lowercase for searching
 //   platforms: ["NES", "GBA", "Switch"],
 //   releaseYear: 1986,
 //   developer: "Nintendo",
 //   publisher: "Nintendo",
 //   genres: ["Action", "Adventure"],
-//   coverUrl: "/covers/zelda-nes.jpg",
-//   // ... more metadata
+//   coverUrl: "/covers/zelda-nes.webp",  // Local WebP (after processing)
+//   igdbCoverUrl: String,     // Fallback IGDB CDN URL
+//   igdbUpdatedAt: Number,    // For change detection
+//   igdbChecksum: String,
+//   createdAt: Date,
+//   updatedAt: Date
 // }
 
 // lib/collections/collectionItems.js - User's collection
@@ -595,16 +553,86 @@ CollectionItems = new Mongo.Collection('collectionItems');
 //   _id: "...",
 //   userId: "user123",
 //   gameId: "game456",
-//   platform: "NES",
-//   status: "completed", // backlog, playing, completed, abandoned
+//   gameName: String,         // Denormalized for search performance
+//   platforms: ["NES"],       // Array (preferred over single platform)
+//   storefronts: ["Steam"],   // Where user owns the game
+//   status: "completed",      // backlog, playing, completed, abandoned, wishlist
 //   rating: 5,
 //   hoursPlayed: 25,
 //   notes: "My favorite game!",
+//   favorite: Boolean,
 //   dateAdded: Date,
 //   dateCompleted: Date,
-//   // ... custom fields
+//   createdAt: Date,
+//   updatedAt: Date
 // }
 ```
+
+#### 5. Cover Image Processing Pipeline
+
+Background queue system for processing game covers:
+- `CoverQueue` collection tracks pending/processing/completed items
+- Atomic claiming with `findOneAndUpdate` ensures single instance processes each item
+- Streaming pipeline: IGDB CDN → sharp (WebP conversion) → B2/local storage
+- Priority system: user-accessed games processed before bulk imports
+- Max 3 retries before marking failed
+
+Storage options configured in settings:
+```json
+{
+  "private": {
+    "storage": {
+      "type": "local",  // or "b2" for Backblaze B2
+      "b2": { "applicationKeyId": "...", "applicationKey": "...", "bucketName": "..." }
+    }
+  }
+}
+```
+
+#### 6. Multi-Instance Deployment
+
+Settings control which instances run background jobs:
+```json
+{
+  "private": {
+    "isWorkerInstance": true,   // Runs cover processor
+    "isSchedulerInstance": true // Runs scheduled jobs (game refresh)
+  }
+}
+```
+
+This allows horizontal scaling where only designated instances run background tasks.
+
+#### 7. Subscription Caching
+
+Spoke apps cache subscription checks with 5-minute TTL to reduce Hub API calls:
+- In-memory cache refreshes from Hub API when expired
+- Falls back to local user data if Hub API unreachable
+- Provides grace period during Hub outages
+
+#### 8. MongoDB Aggregation Patterns
+
+Complex queries use `$facet` for single-pass computation:
+```javascript
+const pipeline = [
+  { $match: { userId: this.userId } },
+  { $facet: {
+    statusCounts: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+    platformCounts: [{ $unwind: '$platforms' }, { $group: { _id: '$platforms', count: { $sum: 1 } } }],
+    totals: [{ $group: { _id: null, total: { $sum: 1 }, hours: { $sum: '$hoursPlayed' } } }]
+  }}
+];
+```
+
+This pattern computes all statistics in a single database operation.
+
+#### 9. Backward Compatibility
+
+Schema changes are handled gracefully to support data migration:
+- Old field (`platform`: string) coexists with new field (`platforms`: array)
+- Queries check both: `{ $or: [{ platforms: value }, { platform: value }] }`
+- UI components handle both formats with fallback logic
+- Data is migrated on write (new saves use the new schema)
 
 ### GitHub Repository
 
@@ -757,9 +785,9 @@ hub/
 
 ---
 
-### Phase 3: Backlog Beacon (3D Bookshelf)
+### Phase 3: Backlog Beacon (3D Beanstalk)
 
-**Goal:** Add the 3D bookshelf visualization using Babylon JS.
+**Goal:** Add the 3D beanstalk visualization using Babylon JS.
 
 **Tasks:**
 
@@ -768,23 +796,23 @@ hub/
    - Set up scene and camera
    - Basic lighting
 
-2. **Create Bookshelf Model**
-   - Shelf geometry
-   - Book slot positions
+2. **Create Beanstalk Model**
+   - Stalk and leaf geometry
+   - Video game slot positions
    - Camera controls (pan, zoom)
 
 3. **Implement Flyweight Pattern**
-   - Mesh pool for books
+   - Mesh pool for video games
    - Virtual scrolling logic
    - Texture management
 
-4. **Add Book Rendering**
-   - Book mesh with spine texture
+4. **Add Video Game Rendering**
+   - Video game mesh with spine texture
    - Cover art loading
    - Placeholder for missing art
 
 5. **Add Interactivity**
-   - Click book to view details
+   - Click video game to view details
    - Hover effects
    - Smooth scrolling
 
@@ -1050,5 +1078,5 @@ Future feature for community-contributed spokes:
 
 ---
 
-*Last updated: 2025-01-18*
-*Document version: 1.0*
+*Last updated: 2026-01-31*
+*Document version: 1.1*
