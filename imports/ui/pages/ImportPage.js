@@ -31,12 +31,14 @@ const ImportContent = {
     
     // Backlog Beacon import state
     this.backlogFile = null;
+    this.backlogPreview = null;
     this.backlogImporting = false;
     this.backlogResult = null;
     this.backlogError = null;
     this.backlogOptions = {
       updateExisting: true
     };
+    this.backlogProgress = null;
     
     // Simple import state
     this.simpleGames = [{ name: '', storefront: '', platform: '' }];
@@ -67,6 +69,7 @@ const ImportContent = {
     this.progressComputation = Tracker.autorun(() => {
       this.darkadiaProgress = ImportProgress.findOne({ type: 'darkadia' });
       this.simpleProgress = ImportProgress.findOne({ type: 'simple' });
+      this.backlogProgress = ImportProgress.findOne({ type: 'backlog' });
       m.redraw();
     });
   },
@@ -100,6 +103,7 @@ const ImportContent = {
     this.darkadiaPreview = null;
     this.backlogError = null;
     this.backlogResult = null;
+    this.backlogPreview = null;
     this.simpleError = null;
     this.simpleResult = null;
     this.exportError = null;
@@ -167,8 +171,24 @@ const ImportContent = {
     const file = event.target.files[0];
     if (file) {
       this.backlogFile = file;
+      this.backlogPreview = null;
       this.backlogResult = null;
       this.backlogError = null;
+      this.previewBacklogBeacon();
+    }
+  },
+
+  async previewBacklogBeacon() {
+    if (!this.backlogFile) {
+      return;
+    }
+
+    try {
+      const content = await this.readFile(this.backlogFile);
+      this.backlogPreview = await Meteor.callAsync('import.previewBacklogBeacon', content);
+      m.redraw();
+    } catch (error) {
+      this.backlogError = error.reason || error.message || 'Failed to preview file';
       m.redraw();
     }
   },
@@ -177,20 +197,30 @@ const ImportContent = {
     if (!this.backlogFile) {
       return;
     }
-    
+
     this.backlogImporting = true;
     this.backlogError = null;
     this.backlogResult = null;
     m.redraw();
-    
+
     try {
       const content = await this.readFile(this.backlogFile);
       this.backlogResult = await Meteor.callAsync('import.backlogBeacon', content, this.backlogOptions);
       this.backlogFile = null;
+      this.backlogPreview = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearProgress', 'backlog');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
     } catch (error) {
       this.backlogError = error.reason || error.message || 'Import failed';
     }
-    
+
     this.backlogImporting = false;
     m.redraw();
   },
@@ -499,28 +529,33 @@ const ImportContent = {
   },
   
   renderBacklogBeaconTab() {
+    const progress = this.backlogProgress;
+    const isProcessing = progress && progress.status === 'processing';
+
     return m('div.backlog-beacon-import', [
       m('header', [
         m('h2', 'Import from Backlog Beacon'),
         m('p', 'Import a previously exported Backlog Beacon CSV file.')
       ]),
-      
+
       m('div.form-group', [
         m('label', { for: 'backlog-file' }, 'Select CSV File'),
         m('input', {
           type: 'file',
           id: 'backlog-file',
           accept: '.csv',
+          disabled: this.backlogImporting,
           onchange: (event) => this.handleBacklogFileSelect(event)
         })
       ]),
-      
+
       m('fieldset', [
         m('legend', 'Import Options'),
         m('label', [
           m('input', {
             type: 'checkbox',
             checked: this.backlogOptions.updateExisting,
+            disabled: this.backlogImporting,
             onchange: (event) => {
               this.backlogOptions.updateExisting = event.target.checked;
             }
@@ -528,27 +563,123 @@ const ImportContent = {
           ' Update existing games instead of skipping. Overwrites edits (notes, rating, status, etc.)'
         ])
       ]),
-      
-      this.backlogFile && m('p', [
-        m('strong', 'Selected: '),
-        this.backlogFile.name,
-        ` (${Math.round(this.backlogFile.size / 1024)} KB)`
+
+      // Progress indicator
+      (this.backlogImporting || isProcessing) && progress && m('div.import-progress', [
+        m('h3', 'Import Progress'),
+        m('div.progress-info', [
+          m('p', [
+            m('strong', 'Processing: '),
+            `${progress.current || 0} of ${progress.total || 0} games`
+          ]),
+          progress.currentGame && m('p', [
+            m('strong', 'Current: '),
+            progress.currentGame
+          ]),
+          m('div.progress-stats', [
+            m('span.stat-imported', `Imported: ${progress.imported || 0}`),
+            m('span.stat-updated', ` | Updated: ${progress.updated || 0}`),
+            m('span.stat-skipped', ` | Skipped: ${progress.skipped || 0}`)
+          ])
+        ]),
+        m('progress', {
+          value: progress.current || 0,
+          max: progress.total || 100
+        })
       ]),
-      
+
+      // Preview table
+      this.backlogPreview && !this.backlogImporting && m('div.import-preview', [
+        m('h3', `Preview (${this.backlogPreview.total} games found)`),
+        m('p', `Showing first ${this.backlogPreview.games.length} games:`),
+        m('table', { role: 'grid' }, [
+          m('thead', [
+            m('tr', [
+              m('th', 'Name'),
+              m('th', 'Platforms'),
+              m('th', 'Status'),
+              m('th', 'Favorite')
+            ])
+          ]),
+          m('tbody', [
+            this.backlogPreview.games.map((game, index) =>
+              m('tr', { key: index }, [
+                m('td', game.name),
+                m('td', game.platforms.join(', ') || '-'),
+                m('td', game.status),
+                m('td', game.favorite ? '★' : '-')
+              ])
+            )
+          ])
+        ])
+      ]),
+
       this.backlogError && m('div.error-message', { role: 'alert' }, [
         m('strong', 'Error: '),
         this.backlogError
       ]),
-      
-      this.backlogResult && m('div.success-message', { role: 'alert' }, [
-        m('strong', 'Import Complete!'),
-        m('p', [
-          `Imported: ${this.backlogResult.imported} games`,
-          this.backlogResult.updated > 0 ? `, Updated: ${this.backlogResult.updated}` : '',
-          `, Skipped: ${this.backlogResult.skipped}`
+
+      // Results with collapsible sections
+      this.backlogResult && m('div.import-results', [
+        m('div.import-results-summary', {
+          class: this.backlogResult.errors.length > 0 ? 'has-errors' : ''
+        }, [
+          m('strong', 'Import Complete!'),
+          m('p', [
+            `Imported: ${this.backlogResult.imported} games`,
+            this.backlogResult.updated > 0 ? `, Updated: ${this.backlogResult.updated}` : '',
+            `, Skipped: ${this.backlogResult.skipped}`
+          ])
+        ]),
+        // Imported games section
+        this.backlogResult.games && this.backlogResult.games.filter(g => g.action === 'imported').length > 0 &&
+          m('div.import-imported', [
+            m('details', [
+              m('summary', `${this.backlogResult.imported} games imported`),
+              m('ul', [
+                this.backlogResult.games
+                  .filter(g => g.action === 'imported')
+                  .map((game, index) => m('li', { key: index }, game.name))
+              ])
+            ])
+          ]),
+        // Updated games section
+        this.backlogResult.games && this.backlogResult.games.filter(g => g.action === 'updated').length > 0 &&
+          m('div.import-updated', [
+            m('details', { open: true }, [
+              m('summary', `${this.backlogResult.updated} games updated`),
+              m('ul', [
+                this.backlogResult.games
+                  .filter(g => g.action === 'updated')
+                  .map((game, index) => m('li', { key: index }, game.name))
+              ])
+            ])
+          ]),
+        // Skipped games section
+        this.backlogResult.games && this.backlogResult.games.filter(g => g.action === 'skipped').length > 0 &&
+          m('div.import-skipped', [
+            m('details', [
+              m('summary', `${this.backlogResult.skipped} games skipped`),
+              m('ul', [
+                this.backlogResult.games
+                  .filter(g => g.action === 'skipped')
+                  .map((game, index) => m('li', { key: index }, `${game.name}${game.reason ? ` - ${game.reason}` : ''}`))
+              ])
+            ])
+          ]),
+        // Errors section
+        this.backlogResult.errors.length > 0 && m('div.import-errors', [
+          m('details', { open: true }, [
+            m('summary', `${this.backlogResult.errors.length} errors`),
+            m('ul', [
+              this.backlogResult.errors.map((error, index) =>
+                m('li', { key: index }, `Row ${error.row}: ${error.name} - ${error.error}`)
+              )
+            ])
+          ])
         ])
       ]),
-      
+
       m('button', {
         disabled: !this.backlogFile || this.backlogImporting,
         onclick: () => this.importBacklogBeacon()

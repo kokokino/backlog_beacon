@@ -1,7 +1,25 @@
 import { Meteor } from 'meteor/meteor';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { Games } from '../../imports/lib/collections/games.js';
+import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { getStorefrontById, findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
+import { parseCSVToObjects } from './csvParser.js';
+import { searchAndCacheGame } from '../igdb/gameCache.js';
+
+// Update progress for Backlog Beacon import
+async function updateBacklogProgress(userId, progressData) {
+  await ImportProgress.upsertAsync(
+    { userId, type: 'backlog' },
+    {
+      $set: {
+        ...progressData,
+        userId,
+        type: 'backlog',
+        updatedAt: new Date()
+      }
+    }
+  );
+}
 
 // Escape a value for CSV
 function escapeCSV(value) {
@@ -34,35 +52,6 @@ function formatDate(date) {
   return d.toISOString().split('T')[0];
 }
 
-// Parse CSV line
-function parseCSVLine(line) {
-  const values = [];
-  let current = '';
-  let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
-    
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      values.push(current.trim());
-      current = '';
-    } else {
-      current += char;
-    }
-  }
-  
-  values.push(current.trim());
-  
-  return values;
-}
 
 // Helper to escape regex special characters
 function escapeRegex(string) {
@@ -182,69 +171,98 @@ export async function importBacklogBeaconCSV(userId, csvContent, options = {}) {
   if (!userId) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to import');
   }
-  
-  const lines = csvContent.split('\n');
-  
-  if (lines.length === 0) {
-    throw new Meteor.Error('invalid-csv', 'Empty CSV file');
+
+  const rows = parseCSVToObjects(csvContent);
+
+  if (rows.length === 0) {
+    throw new Meteor.Error('invalid-csv', 'No valid rows found in CSV');
   }
-  
-  const headers = parseCSVLine(lines[0]);
-  
-  // Validate headers
-  const requiredHeaders = ['Name'];
-  const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-  
-  if (missingHeaders.length > 0) {
-    throw new Meteor.Error('invalid-csv', `Missing required headers: ${missingHeaders.join(', ')}`);
+
+  // Validate that Name header exists by checking first row
+  if (!rows[0].hasOwnProperty('Name')) {
+    throw new Meteor.Error('invalid-csv', 'Missing required header: Name');
   }
-  
+
   const results = {
-    total: 0,
+    total: rows.length,
     imported: 0,
     updated: 0,
     skipped: 0,
-    errors: []
+    errors: [],
+    games: []
   };
-  
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    
-    if (line.length === 0) {
-      continue;
-    }
-    
-    results.total++;
-    
-    const values = parseCSVLine(line);
-    const row = {};
-    
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = values[j] || '';
-    }
-    
-    try {
-      const result = await importBacklogBeaconRow(userId, row, options);
-      
-      if (result.success) {
-        if (result.action === 'updated') {
-          results.updated++;
-        } else {
-          results.imported++;
-        }
-      } else {
-        results.skipped++;
-      }
-    } catch (error) {
-      results.skipped++;
-      results.errors.push({
-        row: i + 1,
-        name: row.Name,
-        error: error.message
+
+  // Initialize progress
+  await updateBacklogProgress(userId, {
+    status: 'processing',
+    current: 0,
+    total: rows.length,
+    currentGame: '',
+    imported: 0,
+    updated: 0,
+    skipped: 0
+  });
+
+  try {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+
+      // Update progress before processing each row
+      await updateBacklogProgress(userId, {
+        status: 'processing',
+        current: i + 1,
+        total: rows.length,
+        currentGame: row.Name || 'Unknown',
+        imported: results.imported,
+        updated: results.updated,
+        skipped: results.skipped
       });
+
+      try {
+        const result = await importBacklogBeaconRow(userId, row, options);
+
+        if (result.success) {
+          if (result.action === 'updated') {
+            results.updated++;
+            results.games.push({ name: row.Name, action: 'updated' });
+          } else {
+            results.imported++;
+            results.games.push({ name: row.Name, action: 'imported' });
+          }
+        } else {
+          results.skipped++;
+          results.games.push({ name: row.Name, action: 'skipped', reason: result.error || 'Duplicate' });
+        }
+      } catch (error) {
+        results.skipped++;
+        results.errors.push({
+          row: i + 2, // +2 for header row and 0-indexing
+          name: row.Name,
+          error: error.message
+        });
+        results.games.push({ name: row.Name, action: 'error', reason: error.message });
+      }
     }
+
+    // Mark as complete
+    await updateBacklogProgress(userId, {
+      status: 'complete',
+      current: rows.length,
+      total: rows.length,
+      currentGame: '',
+      imported: results.imported,
+      updated: results.updated,
+      skipped: results.skipped
+    });
+  } catch (error) {
+    // Mark as error
+    await updateBacklogProgress(userId, {
+      status: 'error',
+      error: error.message
+    });
+    throw error;
   }
-  
+
   return results;
 }
 
@@ -259,6 +277,10 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
   // Parse IGDB ID if present
   const igdbId = row['IGDB ID'] ? parseInt(row['IGDB ID'], 10) : null;
 
+  // Parse platforms early for IGDB matching
+  const platforms = row.Platforms ? row.Platforms.split(',').map(p => p.trim()) : [];
+  const primaryPlatform = platforms[0] || null;
+
   // Try to find the game in cache first
   let game = null;
   if (igdbId) {
@@ -271,6 +293,15 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     });
   }
 
+  // If game not found locally, search IGDB and cache it (like Darkadia import does)
+  if (!game) {
+    try {
+      game = await searchAndCacheGame(gameName, primaryPlatform);
+    } catch (error) {
+      console.warn(`IGDB search failed for "${gameName}":`, error.message);
+    }
+  }
+
   // Check for existing collection item
   let existing = null;
   if (game) {
@@ -280,7 +311,7 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     existing = await CollectionItems.findOneAsync({ userId, igdbId });
   }
 
-  if (existing && options.skipDuplicates !== false) {
+  if (existing && options.updateExisting !== true) {
     return { success: false, error: 'Duplicate' };
   }
 
@@ -295,14 +326,9 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     }
   }
 
-  // Parse platforms
-  const platforms = row.Platforms ? row.Platforms.split(',').map(p => p.trim()) : [];
-
-  // Build collection item
+  // Build collection item - only include gameId/igdbId if they have values (sparse index)
   const collectionItem = {
     userId,
-    gameId: game?._id || null,
-    igdbId: igdbId,
     platforms: platforms,
     storefronts: storefronts,
     status: row.Status || 'backlog',
@@ -318,6 +344,14 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     updatedAt: new Date()
   };
 
+  // Only set gameId/igdbId if found - omitting allows sparse index to work
+  if (game?._id) {
+    collectionItem.gameId = game._id;
+  }
+  if (igdbId) {
+    collectionItem.igdbId = igdbId;
+  }
+
   if (existing && options.updateExisting === true) {
     await CollectionItems.updateAsync(existing._id, {
       $set: {
@@ -330,4 +364,43 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
 
   await CollectionItems.insertAsync(collectionItem);
   return { success: true, action: 'inserted' };
+}
+
+// Preview Backlog Beacon CSV import without actually importing
+export async function previewBacklogBeaconImport(userId, csvContent) {
+  if (!userId) {
+    throw new Meteor.Error('not-authorized', 'Must be logged in to preview import');
+  }
+
+  const rows = parseCSVToObjects(csvContent);
+
+  if (rows.length === 0) {
+    throw new Meteor.Error('invalid-csv', 'No valid rows found in CSV');
+  }
+
+  // Validate that Name header exists
+  if (!rows[0].hasOwnProperty('Name')) {
+    throw new Meteor.Error('invalid-csv', 'Missing required header: Name');
+  }
+
+  const preview = {
+    total: rows.length,
+    games: []
+  };
+
+  // Only include first 50 games in preview
+  const previewRows = rows.slice(0, 50);
+
+  for (const row of previewRows) {
+    const platforms = row.Platforms ? row.Platforms.split(',').map(p => p.trim()) : [];
+
+    preview.games.push({
+      name: row.Name,
+      platforms: platforms,
+      status: row.Status || 'backlog',
+      favorite: row.Favorite === 'Yes'
+    });
+  }
+
+  return preview;
 }

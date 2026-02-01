@@ -3,77 +3,7 @@ import { CollectionItems } from '../../imports/lib/collections/collectionItems.j
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
-
-// Parse CSV content into rows, handling multi-line quoted fields (RFC 4180 compliant)
-function parseCSV(csvContent) {
-  const rows = [];
-  let currentRow = [];
-  let currentField = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < csvContent.length; i++) {
-    const char = csvContent[i];
-    const nextChar = csvContent[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        // Escaped quote - add single quote and skip next
-        currentField += '"';
-        i++;
-      } else {
-        // Toggle quote mode
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      // Field delimiter
-      currentRow.push(currentField.trim());
-      currentField = '';
-    } else if (char === '\r' && nextChar === '\n' && !inQuotes) {
-      // Windows line ending - row delimiter (only when not in quotes)
-      i++; // Skip \n
-      currentRow.push(currentField.trim());
-      if (currentRow.some(field => field !== '')) {
-        rows.push(currentRow);
-      }
-      currentRow = [];
-      currentField = '';
-    } else if ((char === '\n' || char === '\r') && !inQuotes) {
-      // Unix line ending or standalone \r - row delimiter (only when not in quotes)
-      currentRow.push(currentField.trim());
-      if (currentRow.some(field => field !== '')) {
-        rows.push(currentRow);
-      }
-      currentRow = [];
-      currentField = '';
-    } else {
-      currentField += char;
-    }
-  }
-
-  // Handle last field/row
-  currentRow.push(currentField.trim());
-  if (currentRow.some(field => field !== '')) {
-    rows.push(currentRow);
-  }
-
-  // Convert to objects using first row as headers
-  if (rows.length === 0) {
-    return [];
-  }
-
-  const headers = rows[0];
-  const result = [];
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = {};
-    for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = rows[i][j] || '';
-    }
-    result.push(row);
-  }
-
-  return result;
-}
+import { parseCSVToObjects } from './csvParser.js';
 
 // Map Darkadia status to our status
 function mapStatus(darkadiaRow) {
@@ -274,7 +204,7 @@ export async function importDarkadiaCSV(userId, csvContent, options = {}) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to import');
   }
   
-  const rows = parseCSV(csvContent);
+  const rows = parseCSVToObjects(csvContent);
   
   if (rows.length === 0) {
     throw new Meteor.Error('invalid-csv', 'No valid rows found in CSV');
@@ -390,7 +320,7 @@ export async function previewDarkadiaImport(userId, csvContent) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to preview import');
   }
   
-  const rows = parseCSV(csvContent);
+  const rows = parseCSVToObjects(csvContent);
   
   if (rows.length === 0) {
     throw new Meteor.Error('invalid-csv', 'No valid rows found in CSV');

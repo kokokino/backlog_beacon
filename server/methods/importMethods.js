@@ -1,7 +1,7 @@
 import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
 import { importDarkadiaCSV, previewDarkadiaImport, clearProgress } from '../imports/darkadiaImport.js';
-import { exportCollectionCSV, importBacklogBeaconCSV } from '../imports/csvExport.js';
+import { exportCollectionCSV, importBacklogBeaconCSV, previewBacklogBeaconImport } from '../imports/csvExport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -99,27 +99,45 @@ Meteor.methods({
     return exportCollectionCSV(this.userId);
   },
   
+  // Preview Backlog Beacon CSV import
+  async 'import.previewBacklogBeacon'(csvContent) {
+    check(csvContent, String);
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (csvContent.length > 10 * 1024 * 1024) { // 10MB limit
+      throw new Meteor.Error('file-too-large', 'CSV file is too large (max 10MB)');
+    }
+
+    return previewBacklogBeaconImport(this.userId, csvContent);
+  },
+
   // Import Backlog Beacon CSV
   async 'import.backlogBeacon'(csvContent, options) {
     check(csvContent, String);
     check(options, Match.Maybe({
       updateExisting: Match.Maybe(Boolean)
     }));
-    
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
     }
-    
+
     await checkImportRateLimit(this.userId);
-    
+
     if (csvContent.length > 10 * 1024 * 1024) { // 10MB limit
       throw new Meteor.Error('file-too-large', 'CSV file is too large (max 10MB)');
     }
-    
+
     const importOptions = {
       updateExisting: options?.updateExisting === true
     };
-    
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
     return importBacklogBeaconCSV(this.userId, csvContent, importOptions);
   },
   
