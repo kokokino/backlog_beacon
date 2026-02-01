@@ -154,8 +154,8 @@ async function updateProgress(userId, progressData) {
 }
 
 // Clear progress from the database
-async function clearProgress(userId) {
-  await ImportProgress.removeAsync({ userId, type: 'darkadia' });
+async function clearProgress(userId, type = 'darkadia') {
+  await ImportProgress.removeAsync({ userId, type });
 }
 
 // Import a single Darkadia row

@@ -45,6 +45,10 @@ const ImportContent = {
     this.simpleError = null;
     this.simpleBulkText = '';
     this.simpleInputMode = 'form';
+    this.simpleProgress = null;
+    this.simpleOptions = {
+      updateExisting: true
+    };
     
     // Export state
     this.exporting = false;
@@ -61,8 +65,8 @@ const ImportContent = {
     
     // Set up reactive computation to track progress
     this.progressComputation = Tracker.autorun(() => {
-      const progress = ImportProgress.findOne({ type: 'darkadia' });
-      this.darkadiaProgress = progress;
+      this.darkadiaProgress = ImportProgress.findOne({ type: 'darkadia' });
+      this.simpleProgress = ImportProgress.findOne({ type: 'simple' });
       m.redraw();
     });
   },
@@ -232,25 +236,34 @@ const ImportContent = {
   
   async importSimple() {
     const games = this.getValidSimpleGames();
-    
+
     if (games.length === 0) {
       this.simpleError = 'Please enter at least one game name';
       return;
     }
-    
+
     this.simpleImporting = true;
     this.simpleError = null;
     this.simpleResult = null;
     m.redraw();
-    
+
     try {
-      this.simpleResult = await Meteor.callAsync('import.simple', games);
+      this.simpleResult = await Meteor.callAsync('import.simple', games, this.simpleOptions);
       this.simpleGames = [{ name: '', storefront: '', platform: '' }];
       this.simpleBulkText = '';
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearProgress', 'simple');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
     } catch (error) {
       this.simpleError = error.reason || error.message || 'Import failed';
     }
-    
+
     this.simpleImporting = false;
     m.redraw();
   },
@@ -545,13 +558,15 @@ const ImportContent = {
   
   renderSimpleTab() {
     const validGames = this.getValidSimpleGames();
-    
+    const progress = this.simpleProgress;
+    const isProcessing = progress && progress.status === 'processing';
+
     return m('div.simple-import', [
       m('header', [
         m('h2', 'Simple Import'),
         m('p', 'Quickly add games by entering their names. Optionally specify storefront and platform.')
       ]),
-      
+
       m('div.input-mode-toggle', [
         m('button', {
           class: this.simpleInputMode === 'form' ? 'secondary' : 'outline',
@@ -566,30 +581,113 @@ const ImportContent = {
           }
         }, 'Bulk Paste')
       ]),
-      
+
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.simpleOptions.updateExisting,
+            disabled: this.simpleImporting,
+            onchange: (event) => {
+              this.simpleOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ])
+      ]),
+
       this.simpleInputMode === 'form' ? this.renderSimpleForm() : this.renderSimpleBulk(),
-      
+
+      // Progress indicator
+      (this.simpleImporting || isProcessing) && progress && m('div.import-progress', [
+        m('h3', 'Import Progress'),
+        m('div.progress-info', [
+          m('p', [
+            m('strong', 'Processing: '),
+            `${progress.current || 0} of ${progress.total || 0} games`
+          ]),
+          progress.currentGame && m('p', [
+            m('strong', 'Current: '),
+            progress.currentGame
+          ]),
+          m('div.progress-stats', [
+            m('span.stat-imported', `Imported: ${progress.imported || 0}`),
+            m('span.stat-updated', ` | Updated: ${progress.updated || 0}`),
+            m('span.stat-skipped', ` | Skipped: ${progress.skipped || 0}`)
+          ])
+        ]),
+        m('progress', {
+          value: progress.current || 0,
+          max: progress.total || 100
+        })
+      ]),
+
       this.simpleError && m('div.error-message', { role: 'alert' }, [
         m('strong', 'Error: '),
         this.simpleError
       ]),
-      
-      this.simpleResult && m('div.success-message', { role: 'alert' }, [
-        m('strong', 'Import Complete!'),
-        m('p', [
-          `Imported: ${this.simpleResult.imported} games`,
-          `, Skipped: ${this.simpleResult.skipped}`
+
+      this.simpleResult && m('div.import-results', [
+        m('div.import-results-summary', {
+          class: this.simpleResult.errors.length > 0 ? 'has-errors' : ''
+        }, [
+          m('strong', 'Import Complete!'),
+          m('p', [
+            `Imported: ${this.simpleResult.imported} games`,
+            this.simpleResult.updated > 0 ? `, Updated: ${this.simpleResult.updated}` : '',
+            `, Skipped: ${this.simpleResult.skipped}`
+          ])
         ]),
-        this.simpleResult.errors.length > 0 && m('details', [
-          m('summary', `${this.simpleResult.errors.length} errors`),
-          m('ul', [
-            this.simpleResult.errors.map((error, index) => 
-              m('li', { key: index }, `${error.name}: ${error.error}`)
-            )
+        // Imported games section
+        this.simpleResult.games && this.simpleResult.games.filter(g => g.action === 'imported').length > 0 &&
+          m('div.import-imported', [
+            m('details', [
+              m('summary', `${this.simpleResult.imported} games imported`),
+              m('ul', [
+                this.simpleResult.games
+                  .filter(g => g.action === 'imported')
+                  .map((game, index) => m('li', { key: index }, game.name))
+              ])
+            ])
+          ]),
+        // Updated games section
+        this.simpleResult.games && this.simpleResult.games.filter(g => g.action === 'updated').length > 0 &&
+          m('div.import-updated', [
+            m('details', { open: true }, [
+              m('summary', `${this.simpleResult.updated} games updated`),
+              m('ul', [
+                this.simpleResult.games
+                  .filter(g => g.action === 'updated')
+                  .map((game, index) => m('li', { key: index }, game.name))
+              ])
+            ])
+          ]),
+        // Skipped games section
+        this.simpleResult.games && this.simpleResult.games.filter(g => g.action === 'skipped').length > 0 &&
+          m('div.import-skipped', [
+            m('details', [
+              m('summary', `${this.simpleResult.skipped} games skipped`),
+              m('ul', [
+                this.simpleResult.games
+                  .filter(g => g.action === 'skipped')
+                  .map((game, index) => m('li', { key: index }, `${game.name}${game.reason ? ` - ${game.reason}` : ''}`))
+              ])
+            ])
+          ]),
+        // Errors section
+        this.simpleResult.errors.length > 0 && m('div.import-errors', [
+          m('details', { open: true }, [
+            m('summary', `${this.simpleResult.errors.length} errors`),
+            m('ul', [
+              this.simpleResult.errors.map((error, index) =>
+                m('li', { key: index }, `${error.name}: ${error.error}`)
+              )
+            ])
           ])
         ])
       ]),
-      
+
       m('button', {
         disabled: validGames.length === 0 || this.simpleImporting,
         onclick: () => this.importSimple()

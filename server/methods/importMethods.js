@@ -3,6 +3,7 @@ import { check, Match } from 'meteor/check';
 import { importDarkadiaCSV, previewDarkadiaImport, clearProgress } from '../imports/darkadiaImport.js';
 import { exportCollectionCSV, importBacklogBeaconCSV } from '../imports/csvExport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
+import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { isConfigured } from '../igdb/client.js';
@@ -18,6 +19,21 @@ async function checkImportRateLimit(userId) {
     const waitSeconds = Math.ceil(result.waitMs / 1000);
     throw new Meteor.Error('rate-limited', `Please wait ${waitSeconds} seconds before importing again`);
   }
+}
+
+// Update progress for simple import
+async function updateSimpleProgress(userId, progressData) {
+  await ImportProgress.upsertAsync(
+    { userId, type: 'simple' },
+    {
+      $set: {
+        ...progressData,
+        userId,
+        type: 'simple',
+        updatedAt: new Date()
+      }
+    }
+  );
 }
 
 Meteor.methods({
@@ -64,12 +80,14 @@ Meteor.methods({
   },
   
   // Clear import progress
-  async 'import.clearProgress'() {
+  async 'import.clearProgress'(type) {
+    check(type, Match.Maybe(String));
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in');
     }
-    
-    await clearProgress(this.userId);
+
+    await clearProgress(this.userId, type || 'darkadia');
   },
   
   // Export collection to CSV
@@ -106,107 +124,190 @@ Meteor.methods({
   },
   
   // Simple import: list of game names with optional storefront
-  async 'import.simple'(games) {
+  async 'import.simple'(games, options) {
     check(games, [{
       name: String,
       platform: Match.Maybe(String),
       storefront: Match.Maybe(String)
     }]);
-    
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
     }
-    
+
     await checkImportRateLimit(this.userId);
-    
+
     if (games.length > 500) {
       throw new Meteor.Error('too-many-games', 'Cannot import more than 500 games at once');
     }
-    
+
+    // Allow other methods to run while import is processing
+    this.unblock();
+
     const results = {
       total: games.length,
       imported: 0,
+      updated: 0,
       skipped: 0,
-      errors: []
+      errors: [],
+      games: []
     };
-    
+
     const igdbEnabled = isConfigured();
-    
-    for (let i = 0; i < games.length; i++) {
-      const game = games[i];
-      
-      try {
-        // Search for game in IGDB if configured
-        let cachedGame = null;
-        let gameId = null;
-        let igdbId = null;
-        
-        if (igdbEnabled) {
-          try {
-            cachedGame = await searchAndCacheGame(game.name, game.platform);
-            if (cachedGame) {
-              gameId = cachedGame._id;
-              igdbId = cachedGame.igdbId;
+
+    // Initialize progress
+    await updateSimpleProgress(this.userId, {
+      status: 'processing',
+      current: 0,
+      total: games.length,
+      currentGame: '',
+      imported: 0,
+      updated: 0,
+      skipped: 0
+    });
+
+    try {
+      for (let i = 0; i < games.length; i++) {
+        const game = games[i];
+
+        // Update progress before processing each game
+        await updateSimpleProgress(this.userId, {
+          status: 'processing',
+          current: i + 1,
+          total: games.length,
+          currentGame: game.name || 'Unknown',
+          imported: results.imported,
+          updated: results.updated,
+          skipped: results.skipped
+        });
+
+        try {
+          // Search for game in IGDB if configured
+          let cachedGame = null;
+          let gameId = null;
+          let igdbId = null;
+
+          if (igdbEnabled) {
+            try {
+              cachedGame = await searchAndCacheGame(game.name, game.platform);
+              if (cachedGame) {
+                gameId = cachedGame._id;
+                igdbId = cachedGame.igdbId;
+              }
+            } catch (error) {
+              console.warn(`IGDB search failed for "${game.name}":`, error.message);
             }
-          } catch (error) {
-            console.warn(`IGDB search failed for "${game.name}":`, error.message);
           }
-        }
-        
-        // Check for duplicate
-        const existingQuery = { userId: this.userId };
-        if (gameId) {
-          existingQuery.gameId = gameId;
-        } else {
-          existingQuery.gameName = game.name;
-        }
-        
-        const existing = await CollectionItems.findOneAsync(existingQuery);
-        
-        if (existing) {
+
+          // Check for duplicate
+          const existingQuery = { userId: this.userId };
+          if (gameId) {
+            existingQuery.gameId = gameId;
+          } else {
+            existingQuery.gameName = game.name;
+          }
+
+          const existing = await CollectionItems.findOneAsync(existingQuery);
+
+          if (existing) {
+            if (options?.updateExisting === true) {
+              // Merge platforms: combine existing.platforms, existing.platform (legacy), and new platform
+              const existingPlatforms = existing.platforms || [];
+              const legacyPlatform = existing.platform && !existingPlatforms.includes(existing.platform) ? [existing.platform] : [];
+              const newPlatform = game.platform && game.platform.trim() ? [game.platform.trim()] : [];
+              const mergedPlatforms = [...new Set([...existingPlatforms, ...legacyPlatform, ...newPlatform])].filter(Boolean);
+
+              // Merge storefronts: add new storefront if not already present
+              const existingStorefronts = existing.storefronts || [];
+              let mergedStorefronts = [...existingStorefronts];
+              if (game.storefront) {
+                const storefront = findStorefrontByName(game.storefront);
+                if (storefront && !mergedStorefronts.includes(storefront.id)) {
+                  mergedStorefronts.push(storefront.id);
+                }
+              }
+
+              await CollectionItems.updateAsync(existing._id, {
+                $set: {
+                  platforms: mergedPlatforms,
+                  platform: mergedPlatforms[0] || '',
+                  storefronts: mergedStorefronts,
+                  updatedAt: new Date()
+                }
+              });
+
+              results.updated++;
+              results.games.push({ name: game.name, action: 'updated' });
+            } else {
+              results.skipped++;
+              results.games.push({ name: game.name, action: 'skipped', reason: 'Already in collection' });
+            }
+            continue;
+          }
+
+          // Parse storefront
+          const storefronts = [];
+          if (game.storefront) {
+            const storefront = findStorefrontByName(game.storefront);
+            if (storefront) {
+              storefronts.push(storefront.id);
+            }
+          }
+
+          // Create collection item
+          await CollectionItems.insertAsync({
+            userId: this.userId,
+            gameId: gameId,
+            igdbId: igdbId,
+            gameName: game.name,
+            platform: game.platform || '',
+            platforms: game.platform ? [game.platform] : [],
+            storefronts: storefronts,
+            status: 'backlog',
+            favorite: false,
+            hoursPlayed: null,
+            rating: null,
+            notes: '',
+            physical: false,
+            dateAdded: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date()
+          });
+
+          results.imported++;
+          results.games.push({ name: game.name, action: 'imported' });
+        } catch (error) {
           results.skipped++;
-          continue;
+          results.errors.push({
+            name: game.name,
+            error: error.message
+          });
+          results.games.push({ name: game.name, action: 'error', reason: error.message });
         }
-        
-        // Parse storefront
-        const storefronts = [];
-        if (game.storefront) {
-          const storefront = findStorefrontByName(game.storefront);
-          if (storefront) {
-            storefronts.push(storefront.id);
-          }
-        }
-        
-        // Create collection item
-        await CollectionItems.insertAsync({
-          userId: this.userId,
-          gameId: gameId,
-          igdbId: igdbId,
-          gameName: game.name,
-          platform: game.platform || '',
-          platforms: game.platform ? [game.platform] : [],
-          storefronts: storefronts,
-          status: 'backlog',
-          favorite: false,
-          hoursPlayed: null,
-          rating: null,
-          notes: '',
-          physical: false,
-          dateAdded: new Date(),
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-        
-        results.imported++;
-      } catch (error) {
-        results.skipped++;
-        results.errors.push({
-          name: game.name,
-          error: error.message
-        });
       }
+
+      // Mark as complete
+      await updateSimpleProgress(this.userId, {
+        status: 'complete',
+        current: games.length,
+        total: games.length,
+        currentGame: '',
+        imported: results.imported,
+        updated: results.updated,
+        skipped: results.skipped
+      });
+    } catch (error) {
+      // Mark as error
+      await updateSimpleProgress(this.userId, {
+        status: 'error',
+        error: error.message
+      });
+      throw error;
     }
-    
+
     return results;
   }
 });
