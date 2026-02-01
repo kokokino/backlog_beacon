@@ -20,6 +20,7 @@ import { initStorageClient } from './covers/storageClient.js';
 // Import additional methods
 import './methods/igdbMethods.js';
 import './methods/importMethods.js';
+import './methods/customGameMethods.js';
 
 // Import additional publications
 import './publications/importProgressPublication.js';

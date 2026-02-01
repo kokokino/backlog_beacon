@@ -5,11 +5,10 @@ export const Games = new Mongo.Collection('games');
 // Schema documentation:
 // {
 //   _id: String,              // MongoDB ID
-//   igdbId: Number,           // IGDB game ID (for syncing)
+//   igdbId: Number,           // IGDB game ID (for syncing) - null for custom games
+//   ownerId: String,          // null = IGDB game (public), set = custom game (private to owner)
 //   title: String,            // Game title (primary display name)
-//   name: String,             // Game name (alias for compatibility)
 //   slug: String,             // URL-friendly slug
-//   searchName: String,       // Lowercase name for searching
 //   platforms: [String],      // Array of platform names
 //   platformIds: [Number],    // IGDB platform IDs
 //   releaseYear: Number,      // Year of first release
@@ -23,9 +22,11 @@ export const Games = new Mongo.Collection('games');
 //   themes: [String],         // Array of theme names
 //   summary: String,          // Game description
 //   storyline: String,        // Story description
-//   coverImageId: String,     // Local file ID (ostrio:files) or IGDB image_id
-//   coverUrl: String,         // Local cover URL (after processing)
+//   coverImageId: String,     // IGDB image_id for cover
+//   coverUrl: String,         // Legacy cover URL field
 //   igdbCoverUrl: String,     // Fallback IGDB CDN URL
+//   localCoverId: String,     // ostrio:files ID for downloaded/uploaded cover
+//   localCoverUrl: String,    // Local cover URL (after processing)
 //   rating: Number,           // IGDB rating (0-100)
 //   ratingCount: Number,      // Number of ratings
 //   aggregatedRating: Number, // Critic rating (0-100)

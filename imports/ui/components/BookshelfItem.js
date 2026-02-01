@@ -31,7 +31,7 @@ export const BookshelfItem = {
       return null;
     }
 
-    const displayName = game ? (game.title || game.name) : (collectionItem?.gameName || 'Unknown Game');
+    const displayName = game?.title || 'Unknown Game';
     const coverSources = getGameCoverSources(game);
     const { localCoverUrl, igdbCoverUrl } = coverSources;
 

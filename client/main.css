@@ -1844,6 +1844,125 @@ dialog article footer button {
   font-style: italic;
 }
 
+/* Custom Game Card and Badge */
+.create-custom-section {
+  margin: 1.5rem 0;
+}
+
+.create-custom-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  cursor: pointer;
+  border: 2px dashed var(--pico-muted-border-color);
+  background: var(--pico-card-background-color);
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.create-custom-card:hover {
+  border-color: var(--pico-primary);
+  background: var(--pico-secondary-background);
+}
+
+.create-custom-icon {
+  font-size: 3rem;
+  color: var(--pico-primary);
+  line-height: 1;
+  margin-bottom: 0.5rem;
+}
+
+.create-custom-text {
+  text-align: center;
+  padding: 1rem;
+}
+
+.create-custom-text h4 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+}
+
+.create-custom-text p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--pico-muted-color);
+}
+
+.custom-game-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Cover upload preview */
+.cover-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cover-preview {
+  max-width: 132px;
+}
+
+.cover-preview img {
+  width: 100%;
+  height: auto;
+  border-radius: var(--pico-border-radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Character count warning */
+.char-count {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--pico-muted-color);
+}
+
+.char-count.warning {
+  color: var(--pico-del-color);
+}
+
+/* Custom badge in modal */
+.custom-badge {
+  display: inline-block;
+  margin-bottom: 1rem;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+/* Checkbox row for form */
+.checkbox-row {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.checkbox-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  margin: 0;
+}
+
+/* Footer with delete button spacing */
+dialog article footer .footer-spacer {
+  flex: 1;
+}
+
 /* Bookshelf loading overlay */
 .bookshelf-loading {
   position: fixed;

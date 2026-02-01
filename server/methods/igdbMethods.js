@@ -20,15 +20,14 @@ async function checkSearchRateLimit(userId) {
 function transformIgdbGameForCache(igdbGame) {
   const developers = igdbGame.involved_companies?.filter(ic => ic.developer) || [];
   const publishers = igdbGame.involved_companies?.filter(ic => ic.publisher) || [];
-  
-  const releaseDate = igdbGame.first_release_date 
-    ? new Date(igdbGame.first_release_date * 1000) 
+
+  const releaseDate = igdbGame.first_release_date
+    ? new Date(igdbGame.first_release_date * 1000)
     : null;
-  
+
   return {
     igdbId: igdbGame.id,
     title: igdbGame.name,
-    name: igdbGame.name,
     slug: igdbGame.slug,
     summary: igdbGame.summary || '',
     storyline: igdbGame.storyline || '',
@@ -53,7 +52,6 @@ function transformIgdbGameForCache(igdbGame) {
     aggregatedRatingCount: igdbGame.aggregated_rating_count || 0,
     igdbUpdatedAt: igdbGame.updated_at || null,
     igdbChecksum: igdbGame.checksum || null,
-    searchName: igdbGame.name.toLowerCase(),
     createdAt: new Date(),
     updatedAt: new Date()
   };
@@ -250,32 +248,33 @@ Meteor.methods({
   
   async 'games.searchLocal'(query) {
     check(query, String);
-    
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in');
     }
-    
+
     if (query.trim().length < 2) {
       return [];
     }
-    
+
     const searchRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    
+
     return Games.find(
-      { 
+      {
+        title: searchRegex,
         $or: [
-          { searchName: searchRegex },
-          { title: searchRegex },
-          { name: searchRegex }
+          { ownerId: { $exists: false } },
+          { ownerId: null },
+          { ownerId: this.userId }
         ]
       },
-      { 
+      {
         limit: 20,
         fields: {
           _id: 1,
           igdbId: 1,
+          ownerId: 1,
           title: 1,
-          name: 1,
           platforms: 1,
           genres: 1,
           releaseYear: 1,
@@ -283,6 +282,7 @@ Meteor.methods({
           coverImageId: 1,
           igdbCoverUrl: 1,
           localCoverId: 1,
+          localCoverUrl: 1,
           developer: 1
         }
       }

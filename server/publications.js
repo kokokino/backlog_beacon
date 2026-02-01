@@ -4,63 +4,8 @@ import { Games } from '../imports/lib/collections/games.js';
 import { CollectionItems } from '../imports/lib/collections/collectionItems.js';
 import { Storefronts } from '../imports/lib/collections/storefronts.js';
 
-// Publish user's collection with filters
-Meteor.publish('userCollection', function(options = {}) {
-  check(options, {
-    status: Match.Maybe(String),
-    platform: Match.Maybe(String),
-    storefront: Match.Maybe(String),
-    favorite: Match.Maybe(Boolean),
-    search: Match.Maybe(String),
-    limit: Match.Maybe(Number),
-    skip: Match.Maybe(Number),
-    sort: Match.Maybe(Object)
-  });
-  
-  if (!this.userId) {
-    this.ready();
-    return;
-  }
-  
-  const query = { userId: this.userId };
-  
-  if (options.status) {
-    query.status = options.status;
-  }
-  
-  if (options.platform) {
-    query.$or = [
-      { platforms: options.platform },
-      { platform: options.platform }
-    ];
-  }
-  
-  if (options.storefront) {
-    query.storefronts = options.storefront;
-  }
-  
-  if (options.favorite === true) {
-    query.favorite = true;
-  }
-  
-  if (options.search && options.search.trim().length > 0) {
-    query.gameName = { $regex: options.search.trim(), $options: 'i' };
-  }
-  
-  const findOptions = {
-    sort: options.sort || { dateAdded: -1 },
-    limit: Math.min(options.limit || 50, 200)
-  };
-  
-  if (options.skip) {
-    findOptions.skip = options.skip;
-  }
-  
-  return CollectionItems.find(query, findOptions);
-});
-
 // Unified publication for collection page - publishes filtered items AND their games
-// Uses aggregation with $lookup to sort by game.title then game.name
+// Uses aggregation with $lookup to sort by game.title
 Meteor.publish('userCollectionWithGames', async function(options = {}) {
   check(options, {
     status: Match.Maybe(String),
@@ -86,10 +31,7 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
   }
 
   if (options.platform) {
-    matchStage.$or = [
-      { platforms: options.platform },
-      { platform: options.platform }
-    ];
+    matchStage.platforms = options.platform;
   }
 
   if (options.storefront) {
@@ -100,10 +42,8 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
     matchStage.favorite = true;
   }
 
-  // Search on denormalized gameName field
-  if (options.search && options.search.trim().length > 0) {
-    matchStage.gameName = { $regex: options.search.trim(), $options: 'i' };
-  }
+  // Search term for filtering by game title after $lookup
+  const searchTerm = options.search && options.search.trim().length > 0 ? options.search.trim() : null;
 
   const limit = Math.min(options.limit || 25, 200);
   const skip = options.skip || 0;
@@ -113,12 +53,23 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
   // Build aggregation pipeline
   const pipeline = [
     { $match: matchStage },
-    // Join with games collection to get title and name for sorting
+    // Join with games collection - filter by ownerId for privacy
     {
       $lookup: {
         from: 'games',
-        localField: 'gameId',
-        foreignField: '_id',
+        let: { gameId: '$gameId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ['$_id', '$$gameId'] },
+              $or: [
+                { ownerId: { $exists: false } },
+                { ownerId: null },
+                { ownerId: this.userId }
+              ]
+            }
+          }
+        ],
         as: 'game'
       }
     },
@@ -128,24 +79,31 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
         path: '$game',
         preserveNullAndEmptyArrays: true
       }
-    },
-    // Add sort fields - use game.title, fallback to game.name, fallback to gameName
-    {
-      $addFields: {
-        sortTitle: {
-          $toLower: {
-            $ifNull: ['$game.title', { $ifNull: ['$game.name', '$gameName'] }]
-          }
-        },
-        sortName: { $toLower: { $ifNull: ['$game.name', ''] } }
-      }
     }
   ];
+
+  // Add search filter after $lookup if search term provided
+  if (searchTerm) {
+    pipeline.push({
+      $match: {
+        'game.title': { $regex: searchTerm, $options: 'i' }
+      }
+    });
+  }
+
+  // Add sort fields - use game.title
+  pipeline.push({
+    $addFields: {
+      sortTitle: {
+        $toLower: { $ifNull: ['$game.title', ''] }
+      }
+    }
+  });
 
   // Add sort stage based on sort option
   if (isNameSort) {
     pipeline.push({
-      $sort: { sortTitle: sortDirection, sortName: sortDirection }
+      $sort: { sortTitle: sortDirection }
     });
   } else {
     // Date sort
@@ -161,8 +119,7 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
   // Project to remove the temporary sort fields but keep the game data
   pipeline.push({
     $project: {
-      sortTitle: 0,
-      sortName: 0
+      sortTitle: 0
     }
   });
 
@@ -192,8 +149,8 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
         fields: {
           _id: 1,
           igdbId: 1,
+          ownerId: 1,
           title: 1,
-          name: 1,
           slug: 1,
           summary: 1,
           platforms: 1,
@@ -222,28 +179,35 @@ Meteor.publish('userCollectionWithGames', async function(options = {}) {
 // Publish games by IDs (for collection display)
 Meteor.publish('gamesByIds', function(gameIds) {
   check(gameIds, [String]);
-  
+
   if (!this.userId) {
     this.ready();
     return;
   }
-  
+
   if (gameIds.length === 0) {
     this.ready();
     return;
   }
-  
+
   // Limit to prevent abuse
   const limitedIds = gameIds.slice(0, 500);
-  
+
   return Games.find(
-    { _id: { $in: limitedIds } },
+    {
+      _id: { $in: limitedIds },
+      $or: [
+        { ownerId: { $exists: false } },
+        { ownerId: null },
+        { ownerId: this.userId }
+      ]
+    },
     {
       fields: {
         _id: 1,
         igdbId: 1,
+        ownerId: 1,
         title: 1,
-        name: 1,
         slug: 1,
         summary: 1,
         platforms: 1,
@@ -272,13 +236,20 @@ Meteor.publish('game', function(gameId) {
   }
 
   return Games.find(
-    { _id: gameId },
+    {
+      _id: gameId,
+      $or: [
+        { ownerId: { $exists: false } },
+        { ownerId: null },
+        { ownerId: this.userId }
+      ]
+    },
     {
       fields: {
         _id: 1,
         igdbId: 1,
+        ownerId: 1,
         title: 1,
-        name: 1,
         slug: 1,
         summary: 1,
         platforms: 1,
@@ -305,41 +276,43 @@ Meteor.publish('gamesSearch', function(query = '', options = {}) {
     genre: Match.Maybe(String),
     limit: Match.Maybe(Number)
   });
-  
+
   if (!this.userId) {
     this.ready();
     return;
   }
-  
-  const searchQuery = {};
-  
+
+  const searchQuery = {
+    $or: [
+      { ownerId: { $exists: false } },
+      { ownerId: null },
+      { ownerId: this.userId }
+    ]
+  };
+
   if (query && query.trim()) {
     const searchTerm = query.trim();
-    searchQuery.$or = [
-      { title: { $regex: searchTerm, $options: 'i' } },
-      { name: { $regex: searchTerm, $options: 'i' } },
-      { searchName: { $regex: searchTerm.toLowerCase(), $options: 'i' } }
-    ];
+    searchQuery.title = { $regex: searchTerm, $options: 'i' };
   }
-  
+
   if (options.platform) {
     searchQuery.platforms = options.platform;
   }
-  
+
   if (options.genre) {
     searchQuery.genres = options.genre;
   }
-  
+
   const limit = Math.min(options.limit || 20, 100);
-  
+
   return Games.find(searchQuery, {
     limit: limit,
-    sort: { title: 1, name: 1 },
+    sort: { title: 1 },
     fields: {
       _id: 1,
       igdbId: 1,
+      ownerId: 1,
       title: 1,
-      name: 1,
       slug: 1,
       platforms: 1,
       releaseYear: 1,
@@ -364,39 +337,41 @@ Meteor.publish('gamesBrowse', function(options = {}) {
     skip: Match.Maybe(Number),
     sort: Match.Maybe(Object)
   });
-  
+
   if (!this.userId) {
     this.ready();
     return;
   }
-  
-  const query = {};
-  
+
+  const query = {
+    $or: [
+      { ownerId: { $exists: false } },
+      { ownerId: null },
+      { ownerId: this.userId }
+    ]
+  };
+
   if (options.search && options.search.trim().length > 0) {
-    const searchTerm = options.search.trim().toLowerCase();
-    query.$or = [
-      { searchName: { $regex: searchTerm, $options: 'i' } },
-      { title: { $regex: searchTerm, $options: 'i' } },
-      { name: { $regex: searchTerm, $options: 'i' } }
-    ];
+    const searchTerm = options.search.trim();
+    query.title = { $regex: searchTerm, $options: 'i' };
   }
-  
+
   if (options.genre) {
     query.genres = options.genre;
   }
-  
+
   if (options.platform) {
     query.platforms = options.platform;
   }
-  
+
   const findOptions = {
-    sort: options.sort || { title: 1, name: 1 },
+    sort: options.sort || { title: 1 },
     limit: Math.min(options.limit || 50, 200),
     fields: {
       _id: 1,
       igdbId: 1,
+      ownerId: 1,
       title: 1,
-      name: 1,
       slug: 1,
       platforms: 1,
       releaseYear: 1,
@@ -409,11 +384,11 @@ Meteor.publish('gamesBrowse', function(options = {}) {
       developer: 1
     }
   };
-  
+
   if (options.skip) {
     findOptions.skip = options.skip;
   }
-  
+
   return Games.find(query, findOptions);
 });
 
@@ -442,11 +417,11 @@ Meteor.publish('collectionPlatforms', function() {
     this.ready();
     return;
   }
-  
+
   // Return collection items with just platforms field for aggregation on client
   return CollectionItems.find(
     { userId: this.userId },
-    { fields: { platforms: 1, platform: 1 } }
+    { fields: { platforms: 1 } }
   );
 });
 

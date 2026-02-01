@@ -35,7 +35,10 @@ export const GameCard = {
     }
 
     // Handle case where game is not in IGDB but collection item exists
-    const displayName = game ? (game.title || game.name) : (collectionItem?.gameName || 'Unknown Game');
+    const displayName = game?.title || 'Unknown Game';
+
+    // Check if this is a custom game (has ownerId)
+    const isCustomGame = game?.ownerId;
 
     // Get all cover sources for cascading fallback
     const coverSources = getGameCoverSources(game);
@@ -121,7 +124,9 @@ export const GameCard = {
           }
         }),
         // Badge is hidden initially; shown by onload if local cover loads successfully
-        localCoverUrl && m('span.local-cover-badge.hidden', { title: 'Cached locally' }, '💾')
+        localCoverUrl && m('span.local-cover-badge.hidden', { title: 'Cached locally' }, '\uD83D\uDCBE'),
+        // Custom game badge
+        isCustomGame && m('span.custom-game-badge', { title: 'Custom game' }, 'Custom')
       ]),
       
       m('div.game-info', [

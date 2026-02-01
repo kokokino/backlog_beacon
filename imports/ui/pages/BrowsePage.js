@@ -4,6 +4,7 @@ import { Tracker } from 'meteor/tracker';
 import { RequireAuth } from '../components/RequireAuth.js';
 import { GameCard } from '../components/GameCard.js';
 import { AddGameModal } from '../components/AddGameModal.js';
+import { CreateCustomGameModal } from '../components/CreateCustomGameModal.js';
 import { Games } from '../../lib/collections/games.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 
@@ -22,6 +23,7 @@ const BrowseContent = {
     this.igdbError = null;
     this.igdbConfigured = true;
     this.addingGame = null;
+    this.creatingCustomGame = false;
     this.subscription = null;
     this.computation = null;
     this.searchDebounceTimer = null;
@@ -321,6 +323,19 @@ const BrowseContent = {
         ])
       ]),
 
+      // Create Custom Game card - shown when searching and no local results found
+      !this.isSearchPending && this.searchQuery.trim().length >= 3 && m('section.create-custom-section', [
+        m('article.game-card.create-custom-card', {
+          onclick: () => { this.creatingCustomGame = true; }
+        }, [
+          m('div.create-custom-icon', '+'),
+          m('div.create-custom-text', [
+            m('h4', "Can't find it?"),
+            m('p', 'Create your own custom game entry')
+          ])
+        ])
+      ]),
+
       !this.isSearchPending && showIgdbSection && m('section.igdb-results', [
         m('h3.section-title', [
           '🌐 Results from IGDB',
@@ -375,9 +390,19 @@ const BrowseContent = {
       this.addingGame && m(AddGameModal, {
         game: this.addingGame,
         onClose: () => { this.addingGame = null; },
-        onSuccess: () => { 
+        onSuccess: () => {
           this.addingGame = null;
           this.setupSubscriptions();
+        }
+      }),
+
+      this.creatingCustomGame && m(CreateCustomGameModal, {
+        initialTitle: this.searchQuery,
+        onClose: () => { this.creatingCustomGame = false; },
+        onSuccess: (gameId) => {
+          this.creatingCustomGame = false;
+          this.setupSubscriptions();
+          this.fetchTotalCount();
         }
       })
     ]);

@@ -72,7 +72,7 @@ export const AddGameModal = {
         ]),
         
         m('p', [
-          m('strong', game.title || game.name),
+          m('strong', game.title),
           game.releaseYear && m('span', ` (${game.releaseYear})`)
         ]),
         

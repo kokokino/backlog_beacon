@@ -11,15 +11,14 @@ import { checkB2FileExists, extractKeyFromB2Url } from '../covers/b2Storage.js';
 function transformIgdbGame(igdbGame) {
   const developers = igdbGame.involved_companies?.filter(ic => ic.developer) || [];
   const publishers = igdbGame.involved_companies?.filter(ic => ic.publisher) || [];
-  
-  const releaseDate = igdbGame.first_release_date 
-    ? new Date(igdbGame.first_release_date * 1000) 
+
+  const releaseDate = igdbGame.first_release_date
+    ? new Date(igdbGame.first_release_date * 1000)
     : null;
-  
+
   return {
     igdbId: igdbGame.id,
     title: igdbGame.name,
-    name: igdbGame.name,
     slug: igdbGame.slug,
     summary: igdbGame.summary || '',
     storyline: igdbGame.storyline || '',
@@ -42,7 +41,6 @@ function transformIgdbGame(igdbGame) {
     aggregatedRatingCount: igdbGame.aggregated_rating_count || 0,
     igdbUpdatedAt: igdbGame.updated_at || null,
     igdbChecksum: igdbGame.checksum || null,
-    searchName: igdbGame.name.toLowerCase(),
     updatedAt: new Date()
   };
 }
@@ -189,23 +187,15 @@ export async function searchAndCacheGame(name, platform = null) {
     return null;
   }
 
-  const searchName = name.toLowerCase().trim();
+  const searchName = name.trim();
 
-  // Check local cache first (exact match)
-  let game = await Games.findOneAsync({ searchName: searchName });
-
-  if (game) {
-    // console.log(`[Cache] Exact match for "${name}" → "${game.name}" (igdbId: ${game.igdbId})`);
-    return game;
-  }
-
-  // Try partial match in cache
-  game = await Games.findOneAsync({
-    searchName: { $regex: `^${escapeRegex(searchName)}$`, $options: 'i' }
+  // Check local cache first (case-insensitive exact match on title)
+  let game = await Games.findOneAsync({
+    title: { $regex: `^${escapeRegex(searchName)}$`, $options: 'i' }
   });
 
   if (game) {
-    // console.log(`[Cache] Regex match for "${name}" → "${game.name}" (igdbId: ${game.igdbId})`);
+    // console.log(`[Cache] Title match for "${name}" → "${game.title}" (igdbId: ${game.igdbId})`);
     return game;
   }
 

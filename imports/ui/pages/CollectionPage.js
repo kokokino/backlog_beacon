@@ -4,6 +4,7 @@ import { Tracker } from 'meteor/tracker';
 import { RequireAuth } from '../components/RequireAuth.js';
 import { GameCard } from '../components/GameCard.js';
 import { EditItemModal } from '../components/EditItemModal.js';
+import { EditCustomGameModal } from '../components/EditCustomGameModal.js';
 import { CollectionFilters } from '../components/CollectionFilters.js';
 import { ViewModeSelector, VIEW_MODES, loadViewMode, saveViewMode } from '../components/ViewModeSelector.js';
 import { VirtualScrollGrid } from '../components/VirtualScrollGrid.js';
@@ -78,10 +79,7 @@ const CollectionContent = {
     Tracker.autorun(() => {
       if (this.platformsSubscription.ready()) {
         const platformSet = new Set();
-        CollectionItems.find({}, { fields: { platforms: 1, platform: 1 } }).forEach(item => {
-          if (item.platform) {
-            platformSet.add(item.platform);
-          }
+        CollectionItems.find({}, { fields: { platforms: 1 } }).forEach(item => {
           if (item.platforms) {
             item.platforms.forEach(platform => platformSet.add(platform));
           }
@@ -130,7 +128,7 @@ const CollectionContent = {
 
     // Capture current sort value for use in the autorun closure
     const currentSort = this.filters.sort || 'name-asc';
-    const sortField = currentSort.startsWith('date') ? 'dateAdded' : 'gameName';
+    const sortField = currentSort.startsWith('date') ? 'dateAdded' : 'title';
     const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
 
     const isInfiniteMode = this.viewMode === VIEW_MODES.INFINITE;
@@ -168,9 +166,7 @@ const CollectionContent = {
       const ready = this.subscription.ready();
 
       if (ready) {
-        let items = CollectionItems.find(
-          { gameName: { $exists: true } }
-        ).fetch();
+        let items = CollectionItems.find({}).fetch();
 
         const gameIds = items.map(item => item.gameId).filter(Boolean);
         const games = Games.find({ _id: { $in: gameIds } }).fetch();
@@ -180,24 +176,16 @@ const CollectionContent = {
         });
 
         // Sort client-side
-        if (sortField === 'gameName') {
+        if (sortField === 'title') {
           items.sort((a, b) => {
             const gameA = this.games[a.gameId] || {};
             const gameB = this.games[b.gameId] || {};
-            const titleA = (gameA.title || gameA.name || a.gameName || '').toLowerCase();
-            const titleB = (gameB.title || gameB.name || b.gameName || '').toLowerCase();
+            const titleA = (gameA.title || '').toLowerCase();
+            const titleB = (gameB.title || '').toLowerCase();
             if (titleA < titleB) {
               return sortDirection === 1 ? -1 : 1;
             }
             if (titleA > titleB) {
-              return sortDirection === 1 ? 1 : -1;
-            }
-            const nameA = (gameA.name || '').toLowerCase();
-            const nameB = (gameB.name || '').toLowerCase();
-            if (nameA < nameB) {
-              return sortDirection === 1 ? -1 : 1;
-            }
-            if (nameA > nameB) {
               return sortDirection === 1 ? 1 : -1;
             }
             return 0;
@@ -652,19 +640,42 @@ const CollectionContent = {
         onModeChange: (mode) => this.handleModeChange(mode)
       }),
 
-      this.editingItem && m(EditItemModal, {
-        item: this.editingItem,
-        game: this.games[this.editingItem.gameId],
-        onClose: () => { this.editingItem = null; },
-        onSuccess: (itemId, updates) => {
-          // Update local item data so 3D view reflects changes
-          const index = this.items.findIndex(item => item._id === itemId);
-          if (index !== -1) {
-            Object.assign(this.items[index], updates);
-          }
-          this.editingItem = null;
-        }
-      })
+      // Show appropriate modal based on whether it's a custom game
+      this.editingItem && (
+        this.games[this.editingItem.gameId]?.ownerId
+          ? m(EditCustomGameModal, {
+              game: this.games[this.editingItem.gameId],
+              collectionItem: this.editingItem,
+              onClose: () => { this.editingItem = null; },
+              onSuccess: (itemId, itemUpdates, gameId, gameUpdates) => {
+                // Update local item data
+                if (itemId) {
+                  const index = this.items.findIndex(item => item._id === itemId);
+                  if (index !== -1) {
+                    Object.assign(this.items[index], itemUpdates);
+                  }
+                }
+                // Update local game data
+                if (gameId && this.games[gameId]) {
+                  Object.assign(this.games[gameId], gameUpdates);
+                }
+                this.editingItem = null;
+              }
+            })
+          : m(EditItemModal, {
+              item: this.editingItem,
+              game: this.games[this.editingItem.gameId],
+              onClose: () => { this.editingItem = null; },
+              onSuccess: (itemId, updates) => {
+                // Update local item data so 3D view reflects changes
+                const index = this.items.findIndex(item => item._id === itemId);
+                if (index !== -1) {
+                  Object.assign(this.items[index], updates);
+                }
+                this.editingItem = null;
+              }
+            })
+      )
     ]);
   }
 };

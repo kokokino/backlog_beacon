@@ -126,7 +126,6 @@ export async function exportCollectionCSV(userId) {
         fields: {
           _id: 1,
           title: 1,
-          name: 1,
           genres: 1,
           developer: 1,
           publisher: 1,
@@ -147,11 +146,11 @@ export async function exportCollectionCSV(userId) {
         })
         .join(', ');
 
-      // Get platforms (support both old and new format)
-      const platforms = item.platforms || (item.platform ? [item.platform] : []);
+      // Get platforms
+      const platforms = item.platforms || [];
 
       const row = [
-        item.gameName || (game ? (game.title || game.name) : ''),
+        game?.title || 'Unknown Game',
         item.igdbId || '',
         platforms.join(', '),
         storefrontNames,
@@ -252,53 +251,58 @@ export async function importBacklogBeaconCSV(userId, csvContent, options = {}) {
 // Import a single row from Backlog Beacon CSV
 async function importBacklogBeaconRow(userId, row, options = {}) {
   const gameName = row.Name;
-  
+
   if (!gameName || gameName.trim() === '') {
     return { success: false, error: 'No game name' };
   }
-  
+
   // Parse IGDB ID if present
   const igdbId = row['IGDB ID'] ? parseInt(row['IGDB ID'], 10) : null;
-  
-  // Check for existing item
-  let existing = null;
-  
+
+  // Try to find the game in cache first
+  let game = null;
   if (igdbId) {
-    existing = await CollectionItems.findOneAsync({ userId, igdbId });
+    game = await Games.findOneAsync({ igdbId });
   }
-  
-  if (!existing) {
-    existing = await CollectionItems.findOneAsync({ 
-      userId, 
-      gameName: { $regex: new RegExp(`^${escapeRegex(gameName)}$`, 'i') }
+  if (!game) {
+    // Try to find by title match
+    game = await Games.findOneAsync({
+      title: { $regex: new RegExp(`^${escapeRegex(gameName)}$`, 'i') }
     });
   }
-  
+
+  // Check for existing collection item
+  let existing = null;
+  if (game) {
+    existing = await CollectionItems.findOneAsync({ userId, gameId: game._id });
+  }
+  if (!existing && igdbId) {
+    existing = await CollectionItems.findOneAsync({ userId, igdbId });
+  }
+
   if (existing && options.skipDuplicates !== false) {
     return { success: false, error: 'Duplicate' };
   }
-  
+
   // Parse storefronts
   const storefrontNames = row.Storefronts ? row.Storefronts.split(',').map(s => s.trim()) : [];
   const storefronts = [];
-  
+
   for (const name of storefrontNames) {
     const storefront = findStorefrontByName(name);
     if (storefront) {
       storefronts.push(storefront.id);
     }
   }
-  
+
   // Parse platforms
   const platforms = row.Platforms ? row.Platforms.split(',').map(p => p.trim()) : [];
-  
+
   // Build collection item
   const collectionItem = {
     userId,
-    gameId: null, // Will be set if we find the game
+    gameId: game?._id || null,
     igdbId: igdbId,
-    gameName: gameName,
-    platform: platforms[0] || '',
     platforms: platforms,
     storefronts: storefronts,
     status: row.Status || 'backlog',
@@ -313,15 +317,7 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     createdAt: new Date(),
     updatedAt: new Date()
   };
-  
-  // Try to find game in cache
-  if (igdbId) {
-    const game = await Games.findOneAsync({ igdbId });
-    if (game) {
-      collectionItem.gameId = game._id;
-    }
-  }
-  
+
   if (existing && options.updateExisting === true) {
     await CollectionItems.updateAsync(existing._id, {
       $set: {
@@ -331,7 +327,7 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
     });
     return { success: true, action: 'updated' };
   }
-  
+
   await CollectionItems.insertAsync(collectionItem);
   return { success: true, action: 'inserted' };
 }

@@ -54,8 +54,7 @@ export const EditItemModal = {
       favorite: this.favorite,
       physical: this.physical,
       storefronts: this.storefronts,
-      platforms: this.platforms,
-      platform: this.platforms[0] || ''
+      platforms: this.platforms
     };
     
     if (this.status === COLLECTION_STATUSES.COMPLETED && item.status !== COLLECTION_STATUSES.COMPLETED) {
@@ -126,7 +125,7 @@ export const EditItemModal = {
         ]),
         
         m('p', [
-          m('strong', game?.title || game?.name || item?.gameName || 'Unknown Game')
+          m('strong', game?.title || 'Unknown Game')
         ]),
 
         m(ExternalGameLinks, { game }),

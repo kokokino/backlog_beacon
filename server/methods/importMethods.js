@@ -202,23 +202,21 @@ Meteor.methods({
             }
           }
 
-          // Check for duplicate
-          const existingQuery = { userId: this.userId };
+          // Check for duplicate by gameId or igdbId
+          let existing = null;
           if (gameId) {
-            existingQuery.gameId = gameId;
-          } else {
-            existingQuery.gameName = game.name;
+            existing = await CollectionItems.findOneAsync({ userId: this.userId, gameId });
           }
-
-          const existing = await CollectionItems.findOneAsync(existingQuery);
+          if (!existing && igdbId) {
+            existing = await CollectionItems.findOneAsync({ userId: this.userId, igdbId });
+          }
 
           if (existing) {
             if (options?.updateExisting === true) {
-              // Merge platforms: combine existing.platforms, existing.platform (legacy), and new platform
+              // Merge platforms
               const existingPlatforms = existing.platforms || [];
-              const legacyPlatform = existing.platform && !existingPlatforms.includes(existing.platform) ? [existing.platform] : [];
               const newPlatform = game.platform && game.platform.trim() ? [game.platform.trim()] : [];
-              const mergedPlatforms = [...new Set([...existingPlatforms, ...legacyPlatform, ...newPlatform])].filter(Boolean);
+              const mergedPlatforms = [...new Set([...existingPlatforms, ...newPlatform])].filter(Boolean);
 
               // Merge storefronts: add new storefront if not already present
               const existingStorefronts = existing.storefronts || [];
@@ -233,7 +231,6 @@ Meteor.methods({
               await CollectionItems.updateAsync(existing._id, {
                 $set: {
                   platforms: mergedPlatforms,
-                  platform: mergedPlatforms[0] || '',
                   storefronts: mergedStorefronts,
                   updatedAt: new Date()
                 }
@@ -262,8 +259,6 @@ Meteor.methods({
             userId: this.userId,
             gameId: gameId,
             igdbId: igdbId,
-            gameName: game.name,
-            platform: game.platform || '',
             platforms: game.platform ? [game.platform] : [],
             storefronts: storefronts,
             status: 'backlog',

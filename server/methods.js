@@ -6,9 +6,39 @@ import { CollectionItems, COLLECTION_STATUSES } from '../imports/lib/collections
 import { checkSubscription } from '../imports/hub/subscriptions.js';
 import { getValidStorefrontIds } from '../imports/lib/constants/storefronts.js';
 import { checkDistributedRateLimit } from './lib/distributedRateLimit.js';
+import { isUsingB2 } from './covers/storageClient.js';
+import { deleteFromB2, extractKeyFromB2Url } from './covers/b2Storage.js';
+import { GameCovers } from './covers/coversCollection.js';
 
 const RATE_LIMIT_WINDOW = 1000;
 const RATE_LIMIT_MAX = 10;
+
+// Delete cover file for a custom game (B2 or local)
+async function deleteCustomGameCover(game) {
+  if (!game.localCoverUrl && !game.localCoverId) {
+    return;
+  }
+
+  if (isUsingB2() && game.localCoverUrl) {
+    const key = extractKeyFromB2Url(game.localCoverUrl);
+    if (key) {
+      try {
+        await deleteFromB2(key);
+      } catch (error) {
+        console.error('Error deleting cover from B2:', error);
+      }
+    }
+  } else if (game.localCoverId) {
+    try {
+      const coverDoc = await GameCovers.findOneAsync(game.localCoverId);
+      if (coverDoc) {
+        await GameCovers.removeAsync(game.localCoverId);
+      }
+    } catch (error) {
+      console.error('Error deleting local cover:', error);
+    }
+  }
+}
 
 async function checkRateLimit(userId, methodName) {
   const key = `method:${userId}:${methodName}`;
@@ -86,8 +116,6 @@ Meteor.methods({
       userId: this.userId,
       gameId: gameId,
       igdbId: game.igdbId || null,
-      gameName: game.title || game.name || '',
-      platform: platform,
       platforms: platforms,
       storefronts: storefronts,
       status: status,
@@ -117,7 +145,6 @@ Meteor.methods({
       dateCompleted: Match.Maybe(Match.OneOf(Date, null)),
       favorite: Match.Maybe(Boolean),
       physical: Match.Maybe(Boolean),
-      platform: Match.Maybe(String),
       platforms: Match.Maybe([String]),
       storefronts: Match.Maybe([String])
     });
@@ -173,23 +200,35 @@ Meteor.methods({
   
   async 'collection.removeItem'(itemId) {
     check(itemId, String);
-    
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'You must be logged in');
     }
-    
+
     await checkRateLimit(this.userId, 'collection.removeItem');
-    
+
     const item = await CollectionItems.findOneAsync(itemId);
     if (!item) {
       throw new Meteor.Error('item-not-found', 'Collection item not found');
     }
-    
+
     if (item.userId !== this.userId) {
       throw new Meteor.Error('not-authorized', 'You can only remove your own collection items');
     }
-    
+
     const result = await CollectionItems.removeAsync(itemId);
+
+    // If the game is a custom game owned by this user, delete it and its cover
+    if (item.gameId) {
+      const game = await Games.findOneAsync(item.gameId);
+      if (game && game.ownerId === this.userId) {
+        // Delete cover file if exists
+        await deleteCustomGameCover(game);
+        // Delete the game document
+        await Games.removeAsync(game._id);
+      }
+    }
+
     return result;
   },
   
@@ -304,20 +343,9 @@ Meteor.methods({
               }
             }
           ],
-          // Platform counts (unwind both platforms array and single platform field)
+          // Platform counts
           platformCounts: [
-            {
-              $project: {
-                platforms: {
-                  $cond: {
-                    if: { $gt: [{ $size: { $ifNull: ['$platforms', []] } }, 0] },
-                    then: '$platforms',
-                    else: { $cond: [{ $ne: ['$platform', null] }, ['$platform'], []] }
-                  }
-                }
-              }
-            },
-            { $unwind: '$platforms' },
+            { $unwind: { path: '$platforms', preserveNullAndEmptyArrays: false } },
             {
               $group: {
                 _id: '$platforms',
@@ -444,6 +472,49 @@ Meteor.methods({
 
     await checkRateLimit(this.userId, 'collection.getCount');
 
+    // If search is provided, we need to use aggregation with $lookup
+    if (filters.search && filters.search.trim().length > 0) {
+      const pipeline = [
+        { $match: { userId: this.userId } }
+      ];
+
+      // Add other filters before $lookup
+      if (filters.status) {
+        pipeline[0].$match.status = filters.status;
+      }
+      if (filters.platform) {
+        pipeline[0].$match.platforms = filters.platform;
+      }
+      if (filters.storefront) {
+        pipeline[0].$match.storefronts = filters.storefront;
+      }
+      if (filters.favorite === true) {
+        pipeline[0].$match.favorite = true;
+      }
+
+      // Join with games to search by title
+      pipeline.push({
+        $lookup: {
+          from: 'games',
+          localField: 'gameId',
+          foreignField: '_id',
+          as: 'game'
+        }
+      });
+      pipeline.push({ $unwind: { path: '$game', preserveNullAndEmptyArrays: true } });
+      pipeline.push({
+        $match: {
+          'game.title': { $regex: filters.search.trim(), $options: 'i' }
+        }
+      });
+      pipeline.push({ $count: 'count' });
+
+      const rawCollection = CollectionItems.rawCollection();
+      const result = await rawCollection.aggregate(pipeline).toArray();
+      return result[0]?.count || 0;
+    }
+
+    // Simple query without search
     const query = { userId: this.userId };
 
     if (filters.status) {
@@ -451,10 +522,7 @@ Meteor.methods({
     }
 
     if (filters.platform) {
-      query.$or = [
-        { platforms: filters.platform },
-        { platform: filters.platform }
-      ];
+      query.platforms = filters.platform;
     }
 
     if (filters.storefront) {
@@ -463,10 +531,6 @@ Meteor.methods({
 
     if (filters.favorite === true) {
       query.favorite = true;
-    }
-
-    if (filters.search && filters.search.trim().length > 0) {
-      query.gameName = { $regex: filters.search.trim(), $options: 'i' };
     }
 
     const count = await CollectionItems.countDocuments(query);
@@ -490,43 +554,100 @@ Meteor.methods({
 
     await checkRateLimit(this.userId, 'collection.getItemsChunk');
 
-    const query = { userId: this.userId };
+    const sortValue = options.sort || 'name-asc';
+    const isNameSort = sortValue.startsWith('name');
+    const sortDirection = sortValue.endsWith('desc') ? -1 : 1;
+    const limit = Math.min(options.limit || 100, 200);
+    const skip = options.skip || 0;
+
+    // Build match stage
+    const matchStage = { userId: this.userId };
 
     if (options.status) {
-      query.status = options.status;
+      matchStage.status = options.status;
     }
 
     if (options.platform) {
-      query.$or = [
-        { platforms: options.platform },
-        { platform: options.platform }
-      ];
+      matchStage.platforms = options.platform;
     }
 
     if (options.favorite === true) {
-      query.favorite = true;
+      matchStage.favorite = true;
     }
 
-    if (options.search && options.search.trim().length > 0) {
-      query.gameName = { $regex: options.search.trim(), $options: 'i' };
+    const searchTerm = options.search && options.search.trim().length > 0 ? options.search.trim() : null;
+
+    // Use aggregation to join with games for sorting by title and searching
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'games',
+          let: { gameId: '$gameId' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$_id', '$$gameId'] },
+                $or: [
+                  { ownerId: { $exists: false } },
+                  { ownerId: null },
+                  { ownerId: this.userId }
+                ]
+              }
+            }
+          ],
+          as: 'game'
+        }
+      },
+      { $unwind: { path: '$game', preserveNullAndEmptyArrays: true } }
+    ];
+
+    // Add search filter after $lookup
+    if (searchTerm) {
+      pipeline.push({
+        $match: {
+          'game.title': { $regex: searchTerm, $options: 'i' }
+        }
+      });
     }
 
-    // Build sort options
-    const sortValue = options.sort || 'name-asc';
-    const sortField = sortValue.startsWith('date') ? 'dateAdded' : 'gameName';
-    const sortDirection = sortValue.endsWith('desc') ? -1 : 1;
+    // Add sort field and sort
+    if (isNameSort) {
+      pipeline.push({
+        $addFields: {
+          sortTitle: { $toLower: { $ifNull: ['$game.title', ''] } }
+        }
+      });
+      pipeline.push({ $sort: { sortTitle: sortDirection } });
+    } else {
+      pipeline.push({ $sort: { dateAdded: sortDirection } });
+    }
 
-    const findOptions = {
-      sort: { [sortField]: sortDirection },
-      limit: Math.min(options.limit || 100, 200),
-      skip: options.skip || 0
-    };
+    // Pagination
+    pipeline.push({ $skip: skip });
+    pipeline.push({ $limit: limit });
 
-    const items = await CollectionItems.find(query, findOptions).fetchAsync();
+    // Remove sort field and game from results
+    pipeline.push({
+      $project: {
+        sortTitle: 0,
+        game: 0
+      }
+    });
 
-    // Fetch associated games
+    const rawCollection = CollectionItems.rawCollection();
+    const items = await rawCollection.aggregate(pipeline).toArray();
+
+    // Fetch associated games with ownerId filter
     const gameIds = items.map(item => item.gameId).filter(Boolean);
-    const games = await Games.find({ _id: { $in: gameIds } }).fetchAsync();
+    const games = await Games.find({
+      _id: { $in: gameIds },
+      $or: [
+        { ownerId: { $exists: false } },
+        { ownerId: null },
+        { ownerId: this.userId }
+      ]
+    }).fetchAsync();
 
     return {
       items,
@@ -547,15 +668,17 @@ Meteor.methods({
 
     await checkRateLimit(this.userId, 'games.count');
 
-    const query = {};
+    const query = {
+      $or: [
+        { ownerId: { $exists: false } },
+        { ownerId: null },
+        { ownerId: this.userId }
+      ]
+    };
 
     if (filters.search && filters.search.trim().length > 0) {
-      const searchTerm = filters.search.trim().toLowerCase();
-      query.$or = [
-        { searchName: { $regex: searchTerm, $options: 'i' } },
-        { title: { $regex: searchTerm, $options: 'i' } },
-        { name: { $regex: searchTerm, $options: 'i' } }
-      ];
+      const searchTerm = filters.search.trim();
+      query.title = { $regex: searchTerm, $options: 'i' };
     }
 
     if (filters.platform) {
@@ -583,32 +706,34 @@ Meteor.methods({
     }
 
     await checkRateLimit(this.userId, 'games.search');
-    
+
     const limit = Math.min(options.limit || 20, 100);
-    const searchQuery = {};
-    
+    const searchQuery = {
+      $or: [
+        { ownerId: { $exists: false } },
+        { ownerId: null },
+        { ownerId: this.userId }
+      ]
+    };
+
     if (query && query.trim()) {
       const searchTerm = query.trim();
-      searchQuery.$or = [
-        { title: { $regex: searchTerm, $options: 'i' } },
-        { name: { $regex: searchTerm, $options: 'i' } },
-        { searchName: { $regex: searchTerm.toLowerCase(), $options: 'i' } }
-      ];
+      searchQuery.title = { $regex: searchTerm, $options: 'i' };
     }
-    
+
     if (options.platform) {
       searchQuery.platforms = options.platform;
     }
-    
+
     if (options.genre) {
       searchQuery.genres = options.genre;
     }
-    
+
     const games = await Games.find(searchQuery, {
       limit: limit,
-      sort: { title: 1, name: 1 }
+      sort: { title: 1 }
     }).fetchAsync();
-    
+
     return games;
   },
 

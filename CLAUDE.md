@@ -122,15 +122,17 @@ async 'collection.addItem'(gameId, platform, status = 'backlog') {
 ### Publications
 All publications check auth first and use explicit field projections:
 ```javascript
-Meteor.publish('userCollection', async function(options = {}) {
+Meteor.publish('game', function(gameId) {
+  check(gameId, String);
+
   if (!this.userId) {
     this.ready();
     return;
   }
 
-  return CollectionItems.find(
-    { userId: this.userId },
-    { fields: { gameId: 1, status: 1, rating: 1 }, limit: Math.min(options.limit || 50, 200) }
+  return Games.find(
+    { _id: gameId },
+    { fields: { _id: 1, title: 1, platforms: 1, releaseYear: 1, coverImageId: 1 } }
   );
 });
 ```
@@ -176,17 +178,19 @@ Settings control which instances run background jobs:
 }
 ```
 
-## Backward Compatibility
+## Custom Games
 
-Schema changes handled gracefully:
-- `platform` (string) vs `platforms` (array) - queries check both: `{ $or: [{ platforms: value }, { platform: value }] }`
-- UI components handle both formats with fallback logic
+Users can create custom games that aren't in IGDB:
+- Custom games have `ownerId` field set to the creating user's ID
+- Publications filter by `$or: [{ ownerId: null }, { ownerId: this.userId }]` for privacy
+- Custom game methods: `games.createCustom`, `games.updateCustom`, `games.deleteCustom`, `games.uploadCustomCover`
+- Covers stored in same location as IGDB covers (`cdn/covers/`)
 
-## Data Denormalization
+## Schema Notes
 
-For read performance, some fields are duplicated:
-- `gameName` stored on CollectionItems (avoids join for search)
-- Update denormalized fields when source changes
+- Games use `title` only (no `name` or `searchName` fields)
+- CollectionItems use `platforms` array only (no `platform` or `gameName` fields)
+- Search by game title uses `$lookup` aggregation to join with games collection
 
 ## Collection Constants
 

@@ -41,7 +41,7 @@ const EXTERNAL_SITES = [
 export const ExternalGameLinks = {
   view(vnode) {
     const { game } = vnode.attrs;
-    const title = game?.title || game?.name || '';
+    const title = game?.title || '';
 
     if (!title) {
       return null;

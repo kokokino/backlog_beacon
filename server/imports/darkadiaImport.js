@@ -185,16 +185,14 @@ async function importRow(userId, row, options = {}) {
     console.warn(`IGDB search failed for "${gameName}":`, error.message);
   }
   
-  // Check for existing collection item
-  const existingQuery = { userId };
-  
+  // Check for existing collection item (by gameId or igdbId)
+  let existing = null;
   if (gameId) {
-    existingQuery.gameId = gameId;
-  } else {
-    existingQuery.gameName = gameName;
+    existing = await CollectionItems.findOneAsync({ userId, gameId });
   }
-  
-  const existing = await CollectionItems.findOneAsync(existingQuery);
+  if (!existing && igdbId) {
+    existing = await CollectionItems.findOneAsync({ userId, igdbId });
+  }
   
   if (existing && options.updateExisting !== true) {
     return { success: false, error: 'Duplicate', existing: existing._id, row };
@@ -230,8 +228,6 @@ async function importRow(userId, row, options = {}) {
   // Note: Only include gameId/igdbId if they have values, so sparse unique index works
   const collectionItem = {
     userId,
-    gameName: gameName,
-    platform: primaryPlatform || '',
     platforms: platforms,
     storefronts: storefronts,
     status: mapStatus(row),
@@ -263,13 +259,13 @@ async function importRow(userId, row, options = {}) {
         createdAt: existing.createdAt // Preserve original creation date
       }
     });
-    return { success: true, action: 'updated', itemId: existing._id, gameName, matchedName: game?.name || null };
+    return { success: true, action: 'updated', itemId: existing._id, gameName, matchedName: game?.title || null };
   }
   
   // Insert new item
   const itemId = await CollectionItems.insertAsync(collectionItem);
   
-  return { success: true, action: 'inserted', itemId, gameName, gameId, matchedName: game?.name || null };
+  return { success: true, action: 'inserted', itemId, gameName, gameId, matchedName: game?.title || null };
 }
 
 // Main import function
