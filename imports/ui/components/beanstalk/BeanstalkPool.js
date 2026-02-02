@@ -316,6 +316,8 @@ export class TextureCache {
 
   /**
    * Evict oldest entries if at capacity
+   * Note: We don't dispose textures here because they may still be assigned to
+   * visible materials. Textures will be garbage collected when no longer referenced.
    */
   _evictIfNeeded() {
     while (this.entries.size >= this.maxSize && this.accessOrder.length > 0) {
@@ -326,10 +328,8 @@ export class TextureCache {
         if (entry.timeoutId) {
           clearTimeout(entry.timeoutId);
         }
-        // Dispose texture if loaded
-        if (entry.texture) {
-          entry.texture.dispose();
-        }
+        // Don't dispose texture - it may still be used by a visible material.
+        // The texture will be garbage collected when the material is reassigned.
       }
       this.entries.delete(oldest);
     }
