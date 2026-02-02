@@ -1982,6 +1982,35 @@ dialog article footer .footer-spacer {
   color: var(--pico-muted-color);
 }
 
+/* Storefront Import Styles */
+.storefront-import {
+  max-width: 700px;
+}
+
+.steam-form {
+  margin-top: 1.5rem;
+}
+
+.steam-form small {
+  display: block;
+  color: var(--pico-muted-color);
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.privacy-notice {
+  background: color-mix(in srgb, var(--pico-primary) 10%, transparent);
+  border: 1px solid var(--pico-primary);
+  border-radius: var(--pico-border-radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}
+
+.privacy-notice a {
+  color: var(--pico-primary);
+}
+
 /* Responsive bookshelf */
 @media (max-width: 900px) {
   .bookshelf-item {

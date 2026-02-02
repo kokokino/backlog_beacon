@@ -13,6 +13,9 @@
       "clientId": "YOUR_TWITCH_CLIENT_ID",
       "clientSecret": "YOUR_TWITCH_CLIENT_SECRET"
     },
+    "steam": {
+      "apiKey": "YOUR_STEAM_API_KEY"
+    },
     "storage": {
       "type": "local",
       "b2": {
