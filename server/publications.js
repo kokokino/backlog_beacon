@@ -432,19 +432,6 @@ Meteor.publish('collectionPlatforms', async function() {
   this.ready();
 });
 
-// Publish distinct storefronts from user's collection (for filters)
-Meteor.publish('collectionStorefronts', function() {
-  if (!this.userId) {
-    this.ready();
-    return;
-  }
-  
-  return CollectionItems.find(
-    { userId: this.userId },
-    { fields: { storefronts: 1 } }
-  );
-});
-
 // Publish all active storefronts
 Meteor.publish('storefronts', function() {
   return Storefronts.find(
