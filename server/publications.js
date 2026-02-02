@@ -412,17 +412,24 @@ Meteor.publish('userData', function() {
 });
 
 // Publish distinct platforms from user's collection (for filters)
-Meteor.publish('collectionPlatforms', function() {
+Meteor.publish('collectionPlatforms', async function() {
   if (!this.userId) {
     this.ready();
     return;
   }
 
-  // Return collection items with just platforms field for aggregation on client
-  return CollectionItems.find(
-    { userId: this.userId },
-    { fields: { platforms: 1 } }
-  );
+  const pipeline = [
+    { $match: { userId: this.userId } },
+    { $unwind: '$platforms' },
+    { $group: { _id: '$platforms' } },
+    { $sort: { _id: 1 } }
+  ];
+
+  const results = await CollectionItems.rawCollection().aggregate(pipeline).toArray();
+  const platforms = results.map(result => result._id).filter(Boolean);
+
+  this.added('userPlatforms', this.userId, { platforms });
+  this.ready();
 });
 
 // Publish distinct storefronts from user's collection (for filters)

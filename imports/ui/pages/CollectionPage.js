@@ -14,6 +14,7 @@ import { BookshelfView } from '../components/BookshelfView.js';
 import { BookshelfThemeSelector, loadBookshelfTheme, saveBookshelfTheme } from '../components/BookshelfThemeSelector.js';
 import { CollectionItems } from '../../lib/collections/collectionItems.js';
 import { Games } from '../../lib/collections/games.js';
+import { UserPlatforms } from '../../lib/collections/userPlatforms.js';
 
 const PAGE_SIZE = 24;
 const INFINITE_CHUNK_SIZE = 100;
@@ -78,13 +79,8 @@ const CollectionContent = {
     this.platformsSubscription = Meteor.subscribe('collectionPlatforms');
     Tracker.autorun(() => {
       if (this.platformsSubscription.ready()) {
-        const platformSet = new Set();
-        CollectionItems.find({}, { fields: { platforms: 1 } }).forEach(item => {
-          if (item.platforms) {
-            item.platforms.forEach(platform => platformSet.add(platform));
-          }
-        });
-        this.platforms = Array.from(platformSet).sort();
+        const platformsDoc = UserPlatforms.findOne(Meteor.userId());
+        this.platforms = platformsDoc?.platforms || [];
         m.redraw();
       }
     });
