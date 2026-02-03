@@ -71,7 +71,7 @@ class TextureEntry {
  * LRU texture cache with robust loading, retries, and placeholders
  */
 export class TextureCache {
-  constructor(maxSize = 50) {
+  constructor(maxSize = 100) {
     this.maxSize = maxSize;
     this.entries = new Map();
     this.accessOrder = [];
@@ -364,6 +364,62 @@ export class TextureCache {
 
     this.entries.set(url, entry);
     this.accessOrder.push(url);
+  }
+
+  /**
+   * Preload textures without waiting for them to be assigned to materials
+   * Starts loading textures that aren't already cached or loading
+   *
+   * @param {string[]} urls - Array of texture URLs to preload
+   * @param {BABYLON.Scene} scene - Babylon scene for texture creation
+   */
+  preloadTextures(urls, scene) {
+    if (!scene) {
+      scene = this.scene;
+    }
+    if (!scene) {
+      return; // No scene available
+    }
+
+    for (const url of urls) {
+      if (!url || url.startsWith('data:')) {
+        continue; // Skip null/undefined and data URIs
+      }
+
+      let entry = this.entries.get(url);
+
+      if (entry) {
+        // Move to end of access order (most recently used)
+        const index = this.accessOrder.indexOf(url);
+        if (index > -1) {
+          this.accessOrder.splice(index, 1);
+        }
+        this.accessOrder.push(url);
+
+        // Already cached or loading - skip
+        if (entry.state === TextureState.LOADED ||
+            entry.state === TextureState.LOADING) {
+          continue;
+        }
+
+        // Entry exists but failed or pending - try loading again
+        if (entry.state === TextureState.PENDING) {
+          this._startLoad(entry, scene);
+        }
+      } else {
+        // New texture - create entry and start loading
+        this._evictIfNeeded();
+
+        entry = new TextureEntry(url);
+        // Preloaded textures have no callbacks - they'll be picked up by requestTexture later
+        entry.callbacks = [];
+
+        this.entries.set(url, entry);
+        this.accessOrder.push(url);
+
+        this._startLoad(entry, scene);
+      }
+    }
   }
 
   dispose() {

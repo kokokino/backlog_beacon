@@ -1,5 +1,7 @@
 import m from 'mithril';
 import { GameCard } from './GameCard.js';
+import { ImagePreloader } from '../lib/imagePreloader.js';
+import { getPreloadUrls } from '../lib/coverUrls.js';
 
 export const VirtualScrollGrid = {
   oninit(vnode) {
@@ -16,6 +18,9 @@ export const VirtualScrollGrid = {
     this.attrs = vnode.attrs;
     this.measured = false;
     this.isResizing = false;      // Prevent resize feedback loops
+
+    // Image preloader for cover images
+    this.preloader = new ImagePreloader();
   },
 
   oncreate(vnode) {
@@ -38,6 +43,11 @@ export const VirtualScrollGrid = {
       if (this.scrollEndTimeout) {
         clearTimeout(this.scrollEndTimeout);
       }
+
+      // Track scroll for preloader velocity/direction
+      const rect = this.containerEl.getBoundingClientRect();
+      const scrollTop = Math.max(0, -rect.top);
+      this.preloader.trackScroll(scrollTop);
 
       if (!this.ticking) {
         requestAnimationFrame(() => {
@@ -126,6 +136,9 @@ export const VirtualScrollGrid = {
     }
     if (this.scrollEndTimeout) {
       clearTimeout(this.scrollEndTimeout);
+    }
+    if (this.preloader) {
+      this.preloader.dispose();
     }
   },
 
@@ -244,6 +257,57 @@ export const VirtualScrollGrid = {
       this.visibleStartIndex = newStartIndex;
       this.visibleEndIndex = newEndIndex;
       m.redraw();
+    }
+
+    // Preload cover images ahead of scroll position
+    this._preloadCovers(newStartIndex, newEndIndex, totalCount);
+  },
+
+  /**
+   * Preload cover images based on scroll direction and velocity
+   */
+  _preloadCovers(startIndex, endIndex, totalCount) {
+    const { items, games } = this.attrs;
+    if (!items || !games) {
+      return;
+    }
+
+    const { direction, velocity } = this.preloader.getScrollState();
+    const { ahead, behind } = this.preloader.getLookahead();
+
+    // Calculate preload range based on scroll direction
+    let preloadStart;
+    let preloadEnd;
+
+    if (direction === 'down') {
+      // Scrolling down - preload more below
+      preloadStart = Math.max(0, startIndex - behind);
+      preloadEnd = Math.min(totalCount - 1, endIndex + ahead);
+    } else if (direction === 'up') {
+      // Scrolling up - preload more above
+      preloadStart = Math.max(0, startIndex - ahead);
+      preloadEnd = Math.min(totalCount - 1, endIndex + behind);
+    } else {
+      // Idle - preload equally in both directions
+      preloadStart = Math.max(0, startIndex - ahead);
+      preloadEnd = Math.min(totalCount - 1, endIndex + ahead);
+    }
+
+    // Collect URLs to preload
+    const urls = [];
+    for (let index = preloadStart; index <= preloadEnd; index++) {
+      const item = items[index];
+      if (item) {
+        const game = games[item.gameId];
+        if (game) {
+          const gameUrls = getPreloadUrls(game);
+          urls.push(...gameUrls);
+        }
+      }
+    }
+
+    if (urls.length > 0) {
+      this.preloader.preload(urls);
     }
   },
 

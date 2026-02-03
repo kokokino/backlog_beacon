@@ -1,30 +1,6 @@
 import m from 'mithril';
 import { STATUS_LABELS } from '../../lib/collections/collectionItems.js';
-
-// SVG placeholder for games without covers
-const noCoverSvg = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
-
-// Helper to get all available cover sources for a game
-function getGameCoverSources(game) {
-  if (!game) {
-    return { localCoverUrl: null, igdbCoverUrl: null, noCoverSvg };
-  }
-
-  // Build local cover URL if available
-  const localCoverUrl = game.localCoverUrl || null;
-
-  // Build IGDB cover URL from available fields
-  let igdbCoverUrl = null;
-  if (game.coverImageId) {
-    igdbCoverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
-  } else if (game.igdbCoverUrl) {
-    igdbCoverUrl = game.igdbCoverUrl;
-  } else if (game.coverUrl) {
-    igdbCoverUrl = game.coverUrl;
-  }
-
-  return { localCoverUrl, igdbCoverUrl, noCoverSvg };
-}
+import { getCoverSources, noCoverSvg } from '../lib/coverUrls.js';
 
 export const GameCard = {
   view(vnode) {
@@ -41,7 +17,7 @@ export const GameCard = {
     const isCustomGame = game?.ownerId;
 
     // Get all cover sources for cascading fallback
-    const coverSources = getGameCoverSources(game);
+    const coverSources = getCoverSources(game);
     const { localCoverUrl, igdbCoverUrl } = coverSources;
 
     // Determine initial cover URL and source

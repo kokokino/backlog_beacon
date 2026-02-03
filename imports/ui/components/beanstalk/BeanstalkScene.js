@@ -8,6 +8,7 @@ import { BeanstalkPlant } from './BeanstalkPlant.js';
 import { LeafData, createLeafMesh } from './LeafData.js';
 import { ObjectPool, TextureCache, AnimationManager, Tween, Easing } from './BeanstalkPool.js';
 import { GameCase3D, getCoverUrl } from './GameCase3D.js';
+import { getPreloadUrls } from '../../lib/coverUrls.js';
 import { BeanstalkInput } from './BeanstalkInput.js';
 import { BeanstalkEffects } from './BeanstalkEffects.js';
 import { showToast } from '../../lib/toast.js';
@@ -956,6 +957,9 @@ export class BeanstalkScene {
     // Calculate and report visible range
     this.updateVisibleRange();
 
+    // Preload textures based on velocity
+    this._preloadTexturesForVelocity(climbVelocity);
+
     // Start fairy lights once any game is visible in viewport
     if (this.effects && !this.effects.fairyLightsActive) {
       for (const branch of this.branches) {
@@ -988,6 +992,59 @@ export class BeanstalkScene {
 
     if (minIndex !== Infinity && maxIndex !== -Infinity) {
       this.onVisibleRangeChange(minIndex, maxIndex);
+    }
+  }
+
+  /**
+   * Preload textures for games ahead of the current scroll position
+   * Lookahead increases with velocity for smoother fast scrolling
+   *
+   * @param {number} velocity - Current climb velocity (positive = up, negative = down)
+   */
+  _preloadTexturesForVelocity(velocity) {
+    if (this.totalCount === 0) {
+      return;
+    }
+
+    // Base lookahead of 20 games, multiplied by velocity factor
+    const baseLookahead = 20;
+    const velocityMultiplier = Math.min(3, 1 + Math.abs(velocity) / 2);
+    const lookahead = Math.round(baseLookahead * velocityMultiplier);
+
+    // Calculate range to preload based on velocity direction
+    let preloadStart;
+    let preloadEnd;
+
+    if (velocity > 0.1) {
+      // Climbing up - preload more ahead (higher indices)
+      preloadStart = this.nextGameIndex;
+      preloadEnd = Math.min(this.totalCount - 1, this.nextGameIndex + lookahead);
+    } else if (velocity < -0.1) {
+      // Climbing down - preload more behind (lower indices)
+      preloadStart = Math.max(0, this.minGameIndex - lookahead);
+      preloadEnd = this.minGameIndex;
+    } else {
+      // Idle - preload in both directions
+      const halfLookahead = Math.round(lookahead / 2);
+      preloadStart = Math.max(0, this.minGameIndex - halfLookahead);
+      preloadEnd = Math.min(this.totalCount - 1, this.nextGameIndex + halfLookahead);
+    }
+
+    // Collect URLs to preload
+    const urls = [];
+    for (let index = preloadStart; index <= preloadEnd; index++) {
+      const item = this.items[index];
+      if (item) {
+        const game = this.games[item.gameId];
+        if (game) {
+          const gameUrls = getPreloadUrls(game);
+          urls.push(...gameUrls);
+        }
+      }
+    }
+
+    if (urls.length > 0) {
+      this.textureCache.preloadTextures(urls, this.scene);
     }
   }
 

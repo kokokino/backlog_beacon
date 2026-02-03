@@ -3,6 +3,7 @@
  */
 
 import * as BABYLON from '@babylonjs/core';
+import { getCoverUrl as getCoverUrlFromLib } from '../../lib/coverUrls.js';
 
 // Enable CORS for texture loading (required for cross-origin images in WebGL)
 BABYLON.Tools.CorsBehavior = 'anonymous';
@@ -12,38 +13,12 @@ const CASE_WIDTH = 13.5;
 const CASE_HEIGHT = 19;
 const CASE_DEPTH = 1.5;
 
-// SVG placeholder for games without covers (same as GameCard)
-const noCoverDataUrl = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgMzAwIDQwMCI+CiAgPHJlY3Qgd2lkdGg9IjMwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8dGV4dCB4PSIxNTAiIHk9IjIwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2FhYSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2Ij5ObyBDb3ZlcjwvdGV4dD4KPC9zdmc+';
-
 /**
  * Get the cover URL for a game with fallback chain
+ * Re-exported from shared coverUrls module for backwards compatibility
  */
 export function getCoverUrl(game) {
-  if (!game) {
-    return noCoverDataUrl;
-  }
-
-  // Local cover takes priority
-  if (game.localCoverUrl) {
-    return game.localCoverUrl;
-  }
-
-  // IGDB cover from coverImageId
-  if (game.coverImageId) {
-    return `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
-  }
-
-  // Direct IGDB URL
-  if (game.igdbCoverUrl) {
-    return game.igdbCoverUrl;
-  }
-
-  // Legacy coverUrl field
-  if (game.coverUrl) {
-    return game.coverUrl;
-  }
-
-  return noCoverDataUrl;
+  return getCoverUrlFromLib(game);
 }
 
 /**
