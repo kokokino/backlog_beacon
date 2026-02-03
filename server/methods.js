@@ -9,6 +9,7 @@ import { checkDistributedRateLimit } from './lib/distributedRateLimit.js';
 import { isUsingB2 } from './covers/storageClient.js';
 import { deleteFromB2, extractKeyFromB2Url } from './covers/b2Storage.js';
 import { GameCovers } from './covers/coversCollection.js';
+import { sanitizeSearchQuery } from './igdb/client.js';
 
 const RATE_LIMIT_WINDOW = 1000;
 const RATE_LIMIT_MAX = 10;
@@ -717,7 +718,7 @@ Meteor.methods({
     };
 
     if (query && query.trim()) {
-      const searchTerm = query.trim();
+      const searchTerm = sanitizeSearchQuery(query.trim());
       searchQuery.title = { $regex: searchTerm, $options: 'i' };
     }
 

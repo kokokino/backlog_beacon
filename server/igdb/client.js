@@ -1,6 +1,17 @@
 import { Meteor } from 'meteor/meteor';
 import { waitForRateLimit } from '../lib/distributedRateLimit.js';
 
+// Strip trademark/legal symbols from search queries
+// These symbols often appear in imported game titles but don't exist in IGDB
+export function sanitizeSearchQuery(query) {
+  if (!query) {
+    return query;
+  }
+  // Replace symbols with space (not empty string) to preserve word boundaries
+  // e.g., "ACE COMBAT™7" → "ACE COMBAT 7", not "ACE COMBAT7"
+  return query.replace(/[®™©℠]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 // IGDB API client with distributed rate limiting
 // Rate limit: 4 requests per second (shared across all instances)
 
@@ -78,8 +89,9 @@ export async function searchGames(query, limit = 20) {
   if (!query || query.trim().length < 2) {
     return [];
   }
-  
-  const sanitizedQuery = query.replace(/"/g, '\\"');
+
+  const cleanedQuery = sanitizeSearchQuery(query);
+  const sanitizedQuery = cleanedQuery.replace(/"/g, '\\"');
   
   const body = `
     search "${sanitizedQuery}";
@@ -323,7 +335,7 @@ export async function findGameByName(name, platform = null) {
     return null;
   }
 
-  const originalName = name.trim();
+  const originalName = sanitizeSearchQuery(name.trim());
   const patterns = getSearchPatterns(originalName);
   const allResults = [];
 

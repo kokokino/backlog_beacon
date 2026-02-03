@@ -1,7 +1,7 @@
 import { Meteor } from 'meteor/meteor';
 import fs from 'fs';
 import { Games } from '../../imports/lib/collections/games.js';
-import { getGameById, getGamesByIds, getCoverUrl, findGameByName } from './client.js';
+import { getGameById, getGamesByIds, getCoverUrl, findGameByName, sanitizeSearchQuery } from './client.js';
 import { queueCoverDownload, CoverQueue, QueueStatus } from '../covers/coverQueue.js';
 import { GameCovers } from '../covers/coversCollection.js';
 import { isUsingB2, isB2Url, isLocalUrl } from '../covers/storageClient.js';
@@ -187,7 +187,7 @@ export async function searchAndCacheGame(name, platform = null) {
     return null;
   }
 
-  const searchName = name.trim();
+  const searchName = sanitizeSearchQuery(name.trim());
 
   // Check local cache first (case-insensitive exact match on title)
   let game = await Games.findOneAsync({

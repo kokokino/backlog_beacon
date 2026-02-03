@@ -1,6 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
-import { searchGames, isConfigured, getCoverUrl } from '../igdb/client.js';
+import { searchGames, isConfigured, getCoverUrl, sanitizeSearchQuery } from '../igdb/client.js';
 import { searchAndCacheGame, getOrFetchGame, refreshStaleGames } from '../igdb/gameCache.js';
 import { Games } from '../../imports/lib/collections/games.js';
 import { queueCoverDownload, queueMultipleCoverDownloads } from '../covers/coverQueue.js';
@@ -257,7 +257,8 @@ Meteor.methods({
       return [];
     }
 
-    const searchRegex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const cleanedQuery = sanitizeSearchQuery(query);
+    const searchRegex = new RegExp(cleanedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
     return Games.find(
       {
