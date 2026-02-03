@@ -248,11 +248,6 @@ export class BeanstalkScene {
         if (metadata.gameIndex >= 0) {
           if (metadata.collectionItem) {
             this.onGameSelect(metadata.gameIndex);
-            if (this.effects) {
-              this.effects.highlightGame(metadata.gameData ?
-                this.gameCases.find(c => c.gameIndex === metadata.gameIndex)?.position :
-                new BABYLON.Vector3(0, 0, 0));
-            }
           } else {
             // Data not loaded yet - show toast
             showToast('Loading game...');

@@ -1,5 +1,5 @@
 /**
- * BeanstalkEffects.js - Fairy light particles and glow effects
+ * BeanstalkEffects.js - Fairy light particles
  */
 
 import * as BABYLON from '@babylonjs/core';
@@ -51,77 +51,6 @@ export function createFairyLights(scene, emitter) {
 }
 
 /**
- * Create glow layer for scene
- */
-export function createGlowLayer(scene) {
-  const glow = new BABYLON.GlowLayer('glow', scene);
-  glow.intensity = 0.5;
-  return glow;
-}
-
-/**
- * Selection highlight effect
- */
-export class SelectionHighlight {
-  constructor(scene) {
-    this.scene = scene;
-    this.light = null;
-    this.animating = false;
-    this.intensity = 0;
-    this.targetIntensity = 0;
-    this.decayRate = 0.05;
-  }
-
-  /**
-   * Show highlight at position
-   */
-  highlight(position) {
-    if (!this.light) {
-      this.light = new BABYLON.PointLight('selectionLight', position.clone(), this.scene);
-      this.light.diffuse = new BABYLON.Color3(1, 0.9, 0.5);
-      this.light.specular = new BABYLON.Color3(1, 0.9, 0.5);
-      this.light.range = 50;
-    }
-
-    this.light.position.copyFrom(position);
-    this.targetIntensity = 1.5;
-    this.animating = true;
-  }
-
-  /**
-   * Update highlight animation - call each frame
-   */
-  update() {
-    if (!this.animating || !this.light) {
-      return;
-    }
-
-    // Animate towards target then decay
-    if (this.intensity < this.targetIntensity) {
-      this.intensity += 0.2;
-      if (this.intensity >= this.targetIntensity) {
-        this.targetIntensity = 0;
-      }
-    } else {
-      this.intensity -= this.decayRate;
-      if (this.intensity <= 0) {
-        this.intensity = 0;
-        this.animating = false;
-      }
-    }
-
-    this.light.intensity = this.intensity;
-  }
-
-  dispose() {
-    if (this.light) {
-      this.light.dispose();
-      this.light = null;
-    }
-  }
-}
-
-/**
  * BeanstalkEffects manager
  */
 export class BeanstalkEffects {
@@ -129,19 +58,11 @@ export class BeanstalkEffects {
     this.scene = scene;
     this.fairyLights = null;
     this.fairyLightsActive = false;
-    this.glowLayer = null;
-    this.selectionHighlight = null;
   }
 
   init(plantMesh) {
     // Create fairy lights (but don't start yet - wait for games in viewport)
     this.fairyLights = createFairyLights(this.scene, plantMesh);
-
-    // Create glow layer
-    this.glowLayer = createGlowLayer(this.scene);
-
-    // Create selection highlight
-    this.selectionHighlight = new SelectionHighlight(this.scene);
   }
 
   startFairyLights() {
@@ -152,38 +73,13 @@ export class BeanstalkEffects {
   }
 
   update() {
-    if (this.selectionHighlight) {
-      this.selectionHighlight.update();
-    }
-  }
-
-  highlightGame(position) {
-    if (this.selectionHighlight) {
-      this.selectionHighlight.highlight(position);
-    }
-  }
-
-  /**
-   * Add mesh to glow layer
-   */
-  addGlow(mesh) {
-    if (this.glowLayer) {
-      this.glowLayer.addIncludedOnlyMesh(mesh);
-    }
+    // Reserved for future animated effects
   }
 
   dispose() {
     if (this.fairyLights) {
       this.fairyLights.dispose();
       this.fairyLights = null;
-    }
-    if (this.glowLayer) {
-      this.glowLayer.dispose();
-      this.glowLayer = null;
-    }
-    if (this.selectionHighlight) {
-      this.selectionHighlight.dispose();
-      this.selectionHighlight = null;
     }
   }
 }
