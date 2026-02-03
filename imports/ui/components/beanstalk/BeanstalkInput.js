@@ -36,6 +36,7 @@ export class BeanstalkInput {
     // Velocity state
     this.climbVelocity = 1.0;
     this.targetClimbVelocity = 1.0;
+    this.lastUpdateTime = 0;
 
     // Drag state
     this.isDragging = false;
@@ -328,18 +329,25 @@ export class BeanstalkInput {
    * Returns current climb velocity
    */
   update() {
-    // Smooth velocity towards target
-    this.climbVelocity += (this.targetClimbVelocity - this.climbVelocity) * 0.1;
+    // Calculate deltaTime for frame-rate independent physics (normalized to 60fps)
+    const now = performance.now();
+    const deltaTime = Math.min(this.lastUpdateTime > 0 ? now - this.lastUpdateTime : 16.67, 100);
+    this.lastUpdateTime = now;
 
-    // Apply friction to target
-    this.targetClimbVelocity *= CLIMB_FRICTION;
+    // Smooth velocity towards target (normalized to 60fps)
+    const smoothing = 1 - Math.pow(0.9, 60 * deltaTime / 1000);
+    this.climbVelocity += (this.targetClimbVelocity - this.climbVelocity) * smoothing;
+
+    // Apply friction to target (normalized to 60fps)
+    this.targetClimbVelocity *= Math.pow(CLIMB_FRICTION, 60 * deltaTime / 1000);
 
     // Clamp
     this.clampTargetVelocity();
 
-    // Smooth camera pan
+    // Smooth camera pan (normalized to 60fps)
     if (this.camera) {
-      this.camera.position.x += (this.targetCameraX - this.camera.position.x) * 0.1;
+      const panSmoothing = 1 - Math.pow(0.9, 60 * deltaTime / 1000);
+      this.camera.position.x += (this.targetCameraX - this.camera.position.x) * panSmoothing;
     }
 
     this.onVelocityChange(this.climbVelocity);
