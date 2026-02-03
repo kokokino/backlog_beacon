@@ -50,6 +50,7 @@ export class BeanstalkScene {
     // Animation
     this.animationManager = null;
     this.delta = 0;
+    this.lastFrameTime = 0;
     this.spawnCounter = 0;
     this.swap = false;
 
@@ -655,6 +656,11 @@ export class BeanstalkScene {
   }
 
   render() {
+    // Calculate time-based delta for frame-rate independent animations
+    const now = performance.now();
+    const deltaTime = Math.min(this.lastFrameTime > 0 ? now - this.lastFrameTime : 16.67, 100);
+    this.lastFrameTime = now;
+
     let climbVelocity = this.input.update();
 
     // Clamp velocity when at game 0 to prevent scrolling past start
@@ -701,30 +707,33 @@ export class BeanstalkScene {
       }
     }
 
-    // Animation delta
-    this.delta += 0.025 + 0.02 * Math.abs(climbVelocity);
+    // Animation delta (time-based for frame-rate independence)
+    const deltaPerSecond = 1.5 + 1.2 * Math.abs(climbVelocity);
+    this.delta += deltaPerSecond * (deltaTime / 1000);
 
     // Move plant (creates climbing illusion)
     this.plant.position.y -= climbVelocity * 6;
     this.plant.position.y = Math.max(Math.min(this.plant.position.y, -300), -1000);
 
-    // Update plant ring positions
-    for (let ringIndex = 0; ringIndex < this.plant.ringOrigin.length; ringIndex++) {
+    // Update plant ring positions (time-based wave, no frame-rate dependent cascade)
+    const numRings = this.plant.ringOrigin.length;
+    for (let ringIndex = 0; ringIndex < numRings; ringIndex++) {
+      // Calculate phase delay based on distance from tip (creates traveling wave effect)
+      const distanceFromTip = numRings - 1 - ringIndex;
+      const phaseDelay = distanceFromTip * 0.025;
+      const phase = this.delta - phaseDelay;
+
+      // Amplitude dampens toward base for organic feel
+      const dampFactor = 1 - (distanceFromTip / numRings) * 0.3;
+
+      this.plant.offsetPoints[ringIndex] = new BABYLON.Vector3(
+        dampFactor * (70 * Math.cos(phase * 0.5) + 20 * Math.cos(phase * 2)),
+        dampFactor * (70 * Math.sin(phase * 0.5) + 20 * Math.sin(phase * 2)),
+        0
+      );
+
       for (let vertexIndex = 0; vertexIndex < this.plant.ringOrigin[ringIndex].length; vertexIndex++) {
         this._tempPos.copyFrom(this.plant.ringOrigin[ringIndex][vertexIndex]);
-
-        if (ringIndex === this.plant.ringOrigin.length - 1) {
-          // Tip - sinusoidal spiral
-          this.plant.offsetPoints[ringIndex] = new BABYLON.Vector3(
-            70 * Math.cos(this.delta * 0.5) + 20 * Math.cos(this.delta * 2),
-            70 * Math.sin(this.delta * 0.5) + 20 * Math.sin(this.delta * 2),
-            0
-          );
-        } else {
-          // Body - cascade from tip
-          this.plant.offsetPoints[ringIndex] = this.plant.offsetPoints[ringIndex + 1];
-        }
-
         this._tempPos.addInPlace(this.plant.offsetPoints[ringIndex]);
         this.plant.ring[ringIndex][vertexIndex].copyFrom(this._tempPos);
       }
