@@ -810,7 +810,8 @@ export class BeanstalkScene {
       // Grow leaves only when growth is enabled (use absolute velocity so they grow in both directions)
       const maxScale = 0.7;
       if (leaf.growthEnabled && leaf.scaling.x < maxScale) {
-        const newScale = Math.min(leaf.scaling.x + 0.008 * Math.abs(climbVelocity), maxScale);
+        const growthRate = 0.008 * Math.abs(climbVelocity) * 60 * deltaTime / 1000;
+        const newScale = Math.min(leaf.scaling.x + growthRate, maxScale);
         leaf.scaling.set(newScale, newScale, newScale);
       }
 
@@ -941,9 +942,9 @@ export class BeanstalkScene {
       this.hideRooster();
     }
 
-    // Sky rotation
+    // Sky rotation (normalized to 60fps)
     if (this.skyDome) {
-      this.skyDome.rotation.y += 0.002;
+      this.skyDome.rotation.y += 0.002 * 60 * deltaTime / 1000;
     }
 
     // Update animations and effects
