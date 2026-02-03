@@ -48,6 +48,8 @@ const CollectionContent = {
     this.visibleStart = 0;  // For position indicator
     this.visibleEnd = 0;    // For position indicator
     this.bookshelfTheme = loadBookshelfTheme();  // Load saved theme preference
+    this.pendingChunks = new Set();  // Track in-flight prefetch requests
+    this.prefetchDebounceTimer = null;  // Debounce rapid scroll events
   },
 
   oncreate(vnode) {
@@ -71,6 +73,9 @@ const CollectionContent = {
     }
     if (this.searchFeedbackTimer) {
       clearTimeout(this.searchFeedbackTimer);
+    }
+    if (this.prefetchDebounceTimer) {
+      clearTimeout(this.prefetchDebounceTimer);
     }
   },
 
@@ -297,6 +302,7 @@ const CollectionContent = {
     const hadActiveSearch = previousSearch.length >= 3;
 
     this.filters = newFilters;
+    this.pendingChunks.clear();
 
     // Clear all pending timers on every change
     if (this.searchDebounceTimer) {
@@ -402,6 +408,7 @@ const CollectionContent = {
     this.loadedRanges = [];
     this.loadedCount = 0;
     this.currentPage = 1;
+    this.pendingChunks.clear();
     // Scroll to top when switching modes
     window.scrollTo(0, 0);
     this.setupSubscriptions();
@@ -426,7 +433,79 @@ const CollectionContent = {
       this.loadItemsAtRange(chunkStart);
     }
 
+    // Schedule predictive prefetch
+    this.schedulePrefetch(endIdx);
+
     m.redraw();
+  },
+
+  schedulePrefetch(currentEndIdx) {
+    if (this.prefetchDebounceTimer) {
+      clearTimeout(this.prefetchDebounceTimer);
+    }
+
+    this.prefetchDebounceTimer = setTimeout(() => {
+      this.prefetchNextChunk(currentEndIdx);
+    }, 50);
+  },
+
+  async prefetchNextChunk(currentEndIdx) {
+    // Calculate distance to next chunk boundary
+    const currentChunk = Math.floor(currentEndIdx / INFINITE_CHUNK_SIZE);
+    const nextChunkStart = (currentChunk + 1) * INFINITE_CHUNK_SIZE;
+    const distanceToNextChunk = nextChunkStart - currentEndIdx;
+
+    // Prefetch when within 30 items of chunk boundary
+    const PREFETCH_THRESHOLD = 30;
+
+    if (distanceToNextChunk > PREFETCH_THRESHOLD) {
+      return; // Not close enough to boundary
+    }
+
+    if (nextChunkStart >= this.totalCount) {
+      return; // No more chunks to load
+    }
+
+    if (this.isRangeLoaded(nextChunkStart, nextChunkStart + INFINITE_CHUNK_SIZE - 1)) {
+      return; // Already loaded
+    }
+
+    if (this.pendingChunks.has(nextChunkStart)) {
+      return; // Already being fetched
+    }
+
+    // Background prefetch
+    this.pendingChunks.add(nextChunkStart);
+
+    try {
+      const options = this.buildFilterOptions();
+      options.limit = INFINITE_CHUNK_SIZE;
+      options.skip = nextChunkStart;
+
+      const result = await Meteor.callAsync('collection.getItemsChunk', options);
+      const newItems = result.items || [];
+      const newGames = result.games || [];
+
+      newGames.forEach(game => {
+        this.games[game._id] = game;
+      });
+
+      newItems.forEach((item, itemIndex) => {
+        this.items[nextChunkStart + itemIndex] = item;
+      });
+
+      if (newItems.length > 0) {
+        this.loadedRanges.push([nextChunkStart, nextChunkStart + newItems.length - 1]);
+        this.mergeAdjacentRanges();
+      }
+
+      this.loadedCount = this.items.filter(item => item !== undefined).length;
+      m.redraw();
+    } catch (error) {
+      console.error('Prefetch failed:', error);
+    } finally {
+      this.pendingChunks.delete(nextChunkStart);
+    }
   },
 
   async loadItemsAtRange(fromIndex) {

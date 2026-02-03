@@ -68,6 +68,13 @@ const ImportContent = {
       importLastPlayed: true
     };
 
+    // GOG-specific state
+    this.gogUsername = '';
+    this.gogMethod = 'public'; // 'public' or 'login'
+    this.gogSessionCookie = null; // In-memory only, never persisted
+    this.gogLoginWindow = null;
+    this.gogLoginCheckInterval = null;
+
     // Export state
     this.exporting = false;
     this.exportError = null;
@@ -97,6 +104,13 @@ const ImportContent = {
     }
     if (this.progressComputation) {
       this.progressComputation.stop();
+    }
+    // Clean up GOG login popup resources
+    if (this.gogLoginCheckInterval) {
+      clearInterval(this.gogLoginCheckInterval);
+    }
+    if (this.gogLoginWindow && !this.gogLoginWindow.closed) {
+      this.gogLoginWindow.close();
     }
   },
   
@@ -358,9 +372,21 @@ const ImportContent = {
   selectStorefront(type) {
     this.storefrontType = type;
     this.steamUsername = '';
+    this.gogUsername = '';
+    this.gogMethod = 'public';
+    this.gogSessionCookie = null;
     this.storefrontPreview = null;
     this.storefrontResult = null;
     this.storefrontError = null;
+    // Clean up any open GOG login window
+    if (this.gogLoginCheckInterval) {
+      clearInterval(this.gogLoginCheckInterval);
+      this.gogLoginCheckInterval = null;
+    }
+    if (this.gogLoginWindow && !this.gogLoginWindow.closed) {
+      this.gogLoginWindow.close();
+      this.gogLoginWindow = null;
+    }
   },
 
   updateSteamUsername(value) {
@@ -402,6 +428,180 @@ const ImportContent = {
       this.storefrontResult = await Meteor.callAsync('import.storefront', this.storefrontType, this.steamUsername, this.storefrontOptions);
       // Clear username after successful import
       this.steamUsername = '';
+      this.storefrontPreview = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  // GOG-specific methods
+  updateGogUsername(value) {
+    this.gogUsername = value;
+  },
+
+  setGogMethod(method) {
+    this.gogMethod = method;
+    // Clear preview when switching methods
+    this.storefrontPreview = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+  },
+
+  openGogLoginPopup() {
+    // Open GOG login page in a popup
+    const width = 500;
+    const height = 700;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    this.gogLoginWindow = window.open(
+      'https://www.gog.com/account',
+      'gog-login',
+      `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=yes,status=no`
+    );
+
+    if (!this.gogLoginWindow) {
+      this.storefrontError = 'Could not open login popup. Please allow popups for this site.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontError = null;
+    m.redraw();
+
+    // Poll for popup closure or navigation to account page
+    this.gogLoginCheckInterval = setInterval(() => {
+      try {
+        if (this.gogLoginWindow.closed) {
+          clearInterval(this.gogLoginCheckInterval);
+          this.gogLoginCheckInterval = null;
+          // User closed the popup - they may have logged in
+          // We can't read cookies from GOG domain due to same-origin policy
+          // So we'll ask them to confirm login manually
+          this.storefrontError = 'Popup closed. If you logged in successfully, please enter your session cookie manually or try the Public Profile method instead.';
+          m.redraw();
+        }
+      } catch (error) {
+        // Cross-origin access error - popup is on GOG domain
+        // This is expected behavior
+      }
+    }, 1000);
+  },
+
+  clearGogSession() {
+    this.gogSessionCookie = null;
+    this.storefrontPreview = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async previewGogPublic() {
+    if (!this.gogUsername.trim()) {
+      return;
+    }
+
+    this.storefrontPreviewing = true;
+    this.storefrontError = null;
+    this.storefrontPreview = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontPreview = await Meteor.callAsync('import.previewStorefront', 'gog', this.gogUsername);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Failed to preview library';
+    }
+
+    this.storefrontPreviewing = false;
+    m.redraw();
+  },
+
+  async previewGogAuth() {
+    if (!this.gogSessionCookie) {
+      this.storefrontError = 'Please enter your GOG session cookie first.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontPreviewing = true;
+    this.storefrontError = null;
+    this.storefrontPreview = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontPreview = await Meteor.callAsync('import.previewGogAuth', this.gogSessionCookie);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Failed to preview library';
+    }
+
+    this.storefrontPreviewing = false;
+    m.redraw();
+  },
+
+  async importGogPublic() {
+    if (!this.gogUsername.trim()) {
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.storefront', 'gog', this.gogUsername, this.storefrontOptions);
+      // Clear username after successful import
+      this.gogUsername = '';
+      this.storefrontPreview = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  async importGogAuth() {
+    if (!this.gogSessionCookie) {
+      this.storefrontError = 'Please enter your GOG session cookie first.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.gogAuth', this.gogSessionCookie, {
+        updateExisting: this.storefrontOptions.updateExisting
+      });
+      // Clear session cookie after successful import (security best practice)
+      this.gogSessionCookie = null;
       this.storefrontPreview = null;
 
       // Clear progress after a short delay
@@ -1036,12 +1236,16 @@ const ImportContent = {
           onchange: (event) => this.selectStorefront(event.target.value || null)
         }, [
           m('option', { value: '' }, '-- Select a storefront --'),
-          m('option', { value: 'steam' }, 'Steam')
+          m('option', { value: 'steam' }, 'Steam'),
+          m('option', { value: 'gog' }, 'GOG')
         ])
       ]),
 
       // Steam form
       this.storefrontType === 'steam' && this.renderSteamForm(),
+
+      // GOG form
+      this.storefrontType === 'gog' && this.renderGogForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -1096,8 +1300,8 @@ const ImportContent = {
         ])
       ]),
 
-      // Import button (outside preview scroll area)
-      this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && m('div.import-actions', [
+      // Import button (outside preview scroll area) - only for storefronts that don't have custom import handling
+      this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && this.storefrontType !== 'gog' && m('div.import-actions', [
         m('button', {
           disabled: this.storefrontImporting || this.storefrontPreview.total === 0,
           onclick: () => this.importStorefront()
@@ -1239,6 +1443,175 @@ const ImportContent = {
         disabled: !hasUsername || this.storefrontPreviewing || this.storefrontImporting,
         onclick: () => this.previewStorefront()
       }, this.storefrontPreviewing ? 'Loading...' : 'Preview Library')
+    ]);
+  },
+
+  renderGogForm() {
+    const hasUsername = this.gogUsername.trim().length > 0;
+    const hasSession = !!this.gogSessionCookie;
+    const isPublicMethod = this.gogMethod === 'public';
+    const canPreview = isPublicMethod ? hasUsername : hasSession;
+    const canImport = this.storefrontPreview && this.storefrontPreview.total > 0;
+
+    return m('div.gog-form', [
+      // Method selector
+      m('fieldset.gog-method-selector', [
+        m('legend', 'Import Method'),
+
+        m('label.method-option', { style: 'display: block; margin-bottom: 1rem; cursor: pointer;' }, [
+          m('input', {
+            type: 'radio',
+            name: 'gog-method',
+            value: 'public',
+            checked: this.gogMethod === 'public',
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            onchange: () => this.setGogMethod('public')
+          }),
+          m('strong', ' Public Profile'),
+          m('p', { style: 'margin: 0.25rem 0 0 1.5rem; font-size: 0.9em; color: var(--muted-color);' }, [
+            'Enter your GOG username. Requires your profile to be set to public.',
+            m('br'),
+            m('small', 'Includes playtime data.')
+          ])
+        ]),
+
+        m('label.method-option', { style: 'display: block; cursor: pointer;' }, [
+          m('input', {
+            type: 'radio',
+            name: 'gog-method',
+            value: 'login',
+            checked: this.gogMethod === 'login',
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            onchange: () => this.setGogMethod('login')
+          }),
+          m('strong', ' Session Cookie'),
+          m('p', { style: 'margin: 0.25rem 0 0 1.5rem; font-size: 0.9em; color: var(--muted-color);' }, [
+            'Paste your GOG session cookie. Works with any account, including private profiles.',
+            m('br'),
+            m('small', 'Does not include playtime data.')
+          ])
+        ])
+      ]),
+
+      // Public method: username input
+      isPublicMethod && m('div.gog-public-form', [
+        m('div.form-group', [
+          m('label', { for: 'gog-username' }, 'GOG Profile URL or Username'),
+          m('input', {
+            type: 'text',
+            id: 'gog-username',
+            placeholder: 'e.g., https://www.gog.com/u/username or just username',
+            value: this.gogUsername,
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            oninput: (event) => this.updateGogUsername(event.target.value)
+          }),
+          m('small', 'Paste your GOG profile URL, or just your username.')
+        ]),
+
+        m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+          m('strong', 'Note: '),
+          'Your profile must be public. ',
+          m('a', {
+            href: 'https://www.gog.com/account/settings/privacy',
+            target: '_blank',
+            rel: 'noopener noreferrer'
+          }, 'Check privacy settings')
+        ])
+      ]),
+
+      // Login method: session cookie input
+      !isPublicMethod && m('div.gog-login-form', [
+        m('div.form-group', [
+          m('label', { for: 'gog-session' }, 'GOG Session Cookie'),
+          m('textarea', {
+            id: 'gog-session',
+            rows: 3,
+            placeholder: 'Paste your gog-al cookie value here...',
+            value: this.gogSessionCookie || '',
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            oninput: (event) => {
+              this.gogSessionCookie = event.target.value.trim() || null;
+            }
+          }),
+          m('small', [
+            'To get your session cookie: ',
+            m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+              m('li', 'Login to GOG.com in your browser'),
+              m('li', 'Open Developer Tools (F12) and go to Application > Cookies > www.gog.com'),
+              m('li', 'Find the cookie named "gog-al" and copy the entire Value (it\'s a long string)')
+            ]),
+            m('p', { style: 'margin-top: 0.5rem; font-style: italic;' },
+              'Tip: The value is very long. Make sure to copy the entire thing, not just the visible portion.')
+          ])
+        ]),
+
+        hasSession && m('div.logged-in-notice', { style: 'margin-bottom: 1rem;' }, [
+          m('span', { style: 'color: var(--ins-color);' }, 'Session cookie provided'),
+          ' ',
+          m('button.outline.secondary', {
+            style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+            onclick: () => this.clearGogSession()
+          }, 'Clear')
+        ]),
+
+        m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+          m('strong', 'Security Note: '),
+          'Your session cookie is only used once to fetch your library and is never stored. It will be cleared after import.'
+        ])
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ]),
+        // Only show playtime options for public method (auth doesn't have playtime)
+        isPublicMethod && m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importPlaytime,
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            onchange: (event) => {
+              this.storefrontOptions.importPlaytime = event.target.checked;
+            }
+          }),
+          ' Import playtime hours'
+        ]),
+        isPublicMethod && m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importLastPlayed,
+            disabled: this.storefrontImporting || this.storefrontPreviewing,
+            onchange: (event) => {
+              this.storefrontOptions.importLastPlayed = event.target.checked;
+            }
+          }),
+          ' Import last played date'
+        ])
+      ]),
+
+      // Preview button
+      !this.storefrontPreview && !this.storefrontResult && m('button', {
+        disabled: !canPreview || this.storefrontPreviewing || this.storefrontImporting,
+        onclick: () => isPublicMethod ? this.previewGogPublic() : this.previewGogAuth()
+      }, this.storefrontPreviewing ? 'Loading...' : 'Preview Library'),
+
+      // Import button (shown after preview)
+      this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && m('div.import-actions', { style: 'margin-top: 1rem;' }, [
+        m('button', {
+          disabled: this.storefrontImporting || !canImport,
+          onclick: () => isPublicMethod ? this.importGogPublic() : this.importGogAuth()
+        }, this.storefrontImporting ? 'Importing...' : `Import ${this.storefrontPreview.total} Games`)
+      ])
     ]);
   },
 

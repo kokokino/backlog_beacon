@@ -3,6 +3,13 @@ import { check, Match } from 'meteor/check';
 import { importDarkadiaCSV, previewDarkadiaImport, clearProgress } from '../imports/darkadiaImport.js';
 import { exportCollectionCSV, importBacklogBeaconCSV, previewBacklogBeaconImport } from '../imports/csvExport.js';
 import { previewSteamLibrary, importSteamLibrary, clearStorefrontProgress, isSteamConfigured } from '../imports/steamImport.js';
+import {
+  previewGogLibrary,
+  previewGogLibraryWithAuth,
+  importGogLibrary,
+  importGogLibraryWithAuth,
+  clearGogProgress
+} from '../imports/gogImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -325,10 +332,10 @@ Meteor.methods({
     return results;
   },
 
-  // Preview storefront import (Steam, etc.)
-  async 'import.previewStorefront'(storefront, steamUsername) {
+  // Preview storefront import (Steam, GOG, etc.)
+  async 'import.previewStorefront'(storefront, username) {
     check(storefront, String);
-    check(steamUsername, String);
+    check(username, String);
 
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in to import');
@@ -338,16 +345,20 @@ Meteor.methods({
       if (!isSteamConfigured()) {
         throw new Meteor.Error('steam-not-configured', 'Steam import is not configured. Please contact support.');
       }
-      return previewSteamLibrary(steamUsername);
+      return previewSteamLibrary(username);
+    }
+
+    if (storefront === 'gog') {
+      return previewGogLibrary(username);
     }
 
     throw new Meteor.Error('invalid-storefront', `Unknown storefront: ${storefront}`);
   },
 
-  // Import from storefront (Steam, etc.)
-  async 'import.storefront'(storefront, steamUsername, options) {
+  // Import from storefront (Steam, GOG, etc.)
+  async 'import.storefront'(storefront, username, options) {
     check(storefront, String);
-    check(steamUsername, String);
+    check(username, String);
     check(options, Match.Maybe({
       updateExisting: Match.Maybe(Boolean),
       importPlaytime: Match.Maybe(Boolean),
@@ -372,7 +383,16 @@ Meteor.methods({
         importPlaytime: options?.importPlaytime !== false,
         importLastPlayed: options?.importLastPlayed !== false
       };
-      return importSteamLibrary(this.userId, steamUsername, importOptions);
+      return importSteamLibrary(this.userId, username, importOptions);
+    }
+
+    if (storefront === 'gog') {
+      const importOptions = {
+        updateExisting: options?.updateExisting !== false,
+        importPlaytime: options?.importPlaytime !== false,
+        importLastPlayed: options?.importLastPlayed !== false
+      };
+      return importGogLibrary(this.userId, username, importOptions);
     }
 
     throw new Meteor.Error('invalid-storefront', `Unknown storefront: ${storefront}`);
@@ -385,5 +405,39 @@ Meteor.methods({
     }
 
     await clearStorefrontProgress(this.userId);
+  },
+
+  // Preview GOG library using authenticated session
+  async 'import.previewGogAuth'(sessionCookie) {
+    check(sessionCookie, String);
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    return previewGogLibraryWithAuth(sessionCookie);
+  },
+
+  // Import GOG library using authenticated session
+  async 'import.gogAuth'(sessionCookie, options) {
+    check(sessionCookie, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importGogLibraryWithAuth(this.userId, sessionCookie, importOptions);
   }
 });
