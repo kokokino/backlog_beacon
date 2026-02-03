@@ -1300,14 +1300,6 @@ const ImportContent = {
         ])
       ]),
 
-      // Import button (outside preview scroll area) - only for storefronts that don't have custom import handling
-      this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && this.storefrontType !== 'gog' && m('div.import-actions', [
-        m('button', {
-          disabled: this.storefrontImporting || this.storefrontPreview.total === 0,
-          onclick: () => this.importStorefront()
-        }, this.storefrontImporting ? 'Importing...' : `Import ${this.storefrontPreview.total} Games`)
-      ]),
-
       // Results with collapsible sections
       this.storefrontResult && m('div.import-results', [
         m('div.import-results-summary', {
@@ -1442,7 +1434,15 @@ const ImportContent = {
       !this.storefrontPreview && !this.storefrontResult && m('button', {
         disabled: !hasUsername || this.storefrontPreviewing || this.storefrontImporting,
         onclick: () => this.previewStorefront()
-      }, this.storefrontPreviewing ? 'Loading...' : 'Preview Library')
+      }, this.storefrontPreviewing ? 'Loading...' : 'Preview Library'),
+
+      // Import button (visible once preview is loaded)
+      this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && m('div.import-actions', { style: 'margin-top: 1rem;' }, [
+        m('button', {
+          disabled: this.storefrontImporting || this.storefrontPreview.total === 0,
+          onclick: () => this.importStorefront()
+        }, this.storefrontImporting ? 'Importing...' : `Import ${this.storefrontPreview.total} Games`)
+      ])
     ]);
   },
 
@@ -1605,7 +1605,7 @@ const ImportContent = {
         onclick: () => isPublicMethod ? this.previewGogPublic() : this.previewGogAuth()
       }, this.storefrontPreviewing ? 'Loading...' : 'Preview Library'),
 
-      // Import button (shown after preview)
+      // Import button (visible once preview is loaded)
       this.storefrontPreview && !this.storefrontImporting && !this.storefrontResult && m('div.import-actions', { style: 'margin-top: 1rem;' }, [
         m('button', {
           disabled: this.storefrontImporting || !canImport,
