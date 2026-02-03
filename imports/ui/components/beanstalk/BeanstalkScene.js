@@ -682,8 +682,8 @@ export class BeanstalkScene {
 
     // Spawn leaves when climbing UP - only if we have more games
     if (climbVelocity > 0.1 && this.nextGameIndex < this.totalCount) {
-      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast
-      this.spawnCounter += Math.max(1, Math.abs(climbVelocity));
+      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast (normalized to 60fps)
+      this.spawnCounter += Math.max(1, Math.abs(climbVelocity)) * 60 * deltaTime / 1000;
       // Allow multiple spawns per frame if scrolling very fast
       while (this.spawnCounter >= 10 && this.nextGameIndex < this.totalCount) {
         this.spawnCounter -= 10;
@@ -693,8 +693,8 @@ export class BeanstalkScene {
 
     // Spawn leaves when scrolling DOWN (only if we have lower games to show)
     if (climbVelocity < -0.1 && this.minGameIndex > 0) {
-      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast
-      this.spawnCounterDown += Math.max(1, Math.abs(climbVelocity));
+      // Increment counter by velocity (minimum 1) for faster spawning when scrolling fast (normalized to 60fps)
+      this.spawnCounterDown += Math.max(1, Math.abs(climbVelocity)) * 60 * deltaTime / 1000;
       // Allow multiple spawns per frame if scrolling very fast
       while (this.spawnCounterDown >= 10 && this.minGameIndex > 0) {
         this.spawnCounterDown -= 10;
@@ -706,8 +706,8 @@ export class BeanstalkScene {
     const deltaPerSecond = 1.5 + 1.2 * Math.abs(climbVelocity);
     this.delta += deltaPerSecond * (deltaTime / 1000);
 
-    // Move plant (creates climbing illusion)
-    this.plant.position.y -= climbVelocity * 6;
+    // Move plant (creates climbing illusion, normalized to 60fps)
+    this.plant.position.y -= climbVelocity * 6 * 60 * deltaTime / 1000;
     this.plant.position.y = Math.max(Math.min(this.plant.position.y, -300), -1000);
 
     // Update plant ring positions (time-based wave, no frame-rate dependent cascade)
