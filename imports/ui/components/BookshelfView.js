@@ -203,12 +203,9 @@ export const BookshelfView = {
     const urls = [];
     for (let index = preloadStart; index <= preloadEnd; index++) {
       const item = items[index];
-      if (item) {
-        const game = games[item.gameId];
-        if (game) {
-          const gameUrls = getPreloadUrls(game);
-          urls.push(...gameUrls);
-        }
+      if (item && item.game) {
+        const gameUrls = getPreloadUrls(item.game);
+        urls.push(...gameUrls);
       }
     }
 
@@ -219,7 +216,7 @@ export const BookshelfView = {
 
   view(vnode) {
     this.attrs = vnode.attrs;
-    const { items, games, totalCount, theme, onUpdateItem, loading } = vnode.attrs;
+    const { items, totalCount, theme, onUpdateItem, loading } = vnode.attrs;
 
     const totalRows = Math.ceil(totalCount / this.itemsPerRow);
     const totalHeight = totalRows * this.shelfHeight;
@@ -236,7 +233,7 @@ export const BookshelfView = {
         if (item) {
           rowItems.push({
             item,
-            game: games[item.gameId]
+            game: item.game
           });
         }
       }

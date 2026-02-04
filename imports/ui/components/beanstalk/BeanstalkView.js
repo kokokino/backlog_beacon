@@ -67,8 +67,8 @@ export const BeanstalkView = {
   },
 
   syncDataToScene(attrs) {
-    if (this.scene && attrs.items && attrs.games) {
-      this.scene.setData(attrs.items, attrs.games, attrs.totalCount);
+    if (this.scene && attrs.items) {
+      this.scene.setData(attrs.items, attrs.totalCount);
     }
   },
 

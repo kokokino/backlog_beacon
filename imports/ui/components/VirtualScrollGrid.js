@@ -297,12 +297,9 @@ export const VirtualScrollGrid = {
     const urls = [];
     for (let index = preloadStart; index <= preloadEnd; index++) {
       const item = items[index];
-      if (item) {
-        const game = games[item.gameId];
-        if (game) {
-          const gameUrls = getPreloadUrls(game);
-          urls.push(...gameUrls);
-        }
+      if (item && item.game) {
+        const gameUrls = getPreloadUrls(item.game);
+        urls.push(...gameUrls);
       }
     }
 
@@ -313,7 +310,7 @@ export const VirtualScrollGrid = {
 
   view(vnode) {
     this.attrs = vnode.attrs;
-    const { items, games, totalCount, onUpdateItem, onRemoveItem, loading } = vnode.attrs;
+    const { items, totalCount, onUpdateItem, onRemoveItem, loading } = vnode.attrs;
 
     // Use fallback height if not measured
     const itemHeight = this.itemHeight || 450;
@@ -370,7 +367,7 @@ export const VirtualScrollGrid = {
           visibleItems.map((item) =>
             m(GameCard, {
               key: item._id,
-              game: games[item.gameId],
+              game: item.game,
               collectionItem: item,
               onUpdateItem,
               onRemoveItem

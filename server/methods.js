@@ -579,28 +579,29 @@ Meteor.methods({
     const searchTerm = options.search && options.search.trim().length > 0 ? options.search.trim() : null;
 
     // Use aggregation to join with games for sorting by title and searching
+    // Simple localField/foreignField lookup is faster than pipeline-style
     const pipeline = [
       { $match: matchStage },
       {
         $lookup: {
           from: 'games',
-          let: { gameId: '$gameId' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ['$_id', '$$gameId'] },
-                $or: [
-                  { ownerId: { $exists: false } },
-                  { ownerId: null },
-                  { ownerId: this.userId }
-                ]
-              }
-            }
-          ],
+          localField: 'gameId',
+          foreignField: '_id',
           as: 'game'
         }
       },
-      { $unwind: { path: '$game', preserveNullAndEmptyArrays: true } }
+      { $unwind: { path: '$game', preserveNullAndEmptyArrays: true } },
+      // Filter by ownerId after unwind (custom games are only visible to their owner)
+      {
+        $match: {
+          $or: [
+            { 'game.ownerId': { $exists: false } },
+            { 'game.ownerId': null },
+            { 'game.ownerId': this.userId },
+            { game: { $exists: false } }  // preserveNullAndEmptyArrays case
+          ]
+        }
+      }
     ];
 
     // Add search filter after $lookup
@@ -628,32 +629,18 @@ Meteor.methods({
     pipeline.push({ $skip: skip });
     pipeline.push({ $limit: limit });
 
-    // Remove sort field and game from results
+    // Remove sort field from results, keep game embedded in each item
     pipeline.push({
       $project: {
-        sortTitle: 0,
-        game: 0
+        sortTitle: 0
       }
     });
 
     const rawCollection = CollectionItems.rawCollection();
     const items = await rawCollection.aggregate(pipeline).toArray();
 
-    // Fetch associated games with ownerId filter
-    const gameIds = items.map(item => item.gameId).filter(Boolean);
-    const games = await Games.find({
-      _id: { $in: gameIds },
-      $or: [
-        { ownerId: { $exists: false } },
-        { ownerId: null },
-        { ownerId: this.userId }
-      ]
-    }).fetchAsync();
-
-    return {
-      items,
-      games
-    };
+    // Each item now has its game embedded directly as item.game
+    return items;
   },
 
   async 'games.count'(filters = {}) {

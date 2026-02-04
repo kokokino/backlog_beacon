@@ -61,9 +61,8 @@ export class BeanstalkScene {
     // Effects
     this.effects = null;
 
-    // Data bridge
+    // Data bridge (game is embedded in each item as item.game)
     this.items = [];
-    this.games = {};
     this.totalCount = 0;
     this.nextGameIndex = 0;  // Next game to spawn at TOP
     this.minGameIndex = 0;   // Lowest game index currently displayed
@@ -553,7 +552,7 @@ export class BeanstalkScene {
     // even before data arrives. setData() will update them later.
 
     const item = this.items[useGameIndex];
-    const game = item ? this.games[item.gameId] : null;
+    const game = item ? item.game : null;
 
     // Request data if missing (but don't return - create placeholder case)
     if (!item) {
@@ -1034,12 +1033,9 @@ export class BeanstalkScene {
     const urls = [];
     for (let index = preloadStart; index <= preloadEnd; index++) {
       const item = this.items[index];
-      if (item) {
-        const game = this.games[item.gameId];
-        if (game) {
-          const gameUrls = getPreloadUrls(game);
-          urls.push(...gameUrls);
-        }
+      if (item && item.game) {
+        const gameUrls = getPreloadUrls(item.game);
+        urls.push(...gameUrls);
       }
     }
 
@@ -1123,18 +1119,17 @@ export class BeanstalkScene {
   }
 
   /**
-   * Update data from Mithril component
+   * Update data from Mithril component (game is embedded in each item as item.game)
    */
-  setData(items, games, totalCount) {
+  setData(items, totalCount) {
     this.items = items;
-    this.games = games;
     this.totalCount = totalCount;
 
     // Update existing game cases with new data
     for (const gameCase of this.gameCases) {
       if (gameCase.gameIndex >= 0 && gameCase.gameIndex < items.length) {
         const item = items[gameCase.gameIndex];
-        const game = item ? games[item.gameId] : null;
+        const game = item ? item.game : null;
         // Update if: item exists AND (we didn't have collectionItem before OR game changed)
         if (item && (!gameCase.collectionItem || game !== gameCase.gameData)) {
           gameCase.setGame(game, item, gameCase.gameIndex);

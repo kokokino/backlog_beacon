@@ -22,7 +22,6 @@ const INFINITE_CHUNK_SIZE = 100;
 const CollectionContent = {
   oninit(vnode) {
     this.items = [];
-    this.games = {};
     this.platforms = [];
     this.filters = {
       status: null,
@@ -169,20 +168,24 @@ const CollectionContent = {
       if (ready) {
         let items = CollectionItems.find({}).fetch();
 
+        // Build games lookup and embed game in each item (same structure as method response)
         const gameIds = items.map(item => item.gameId).filter(Boolean);
         const games = Games.find({ _id: { $in: gameIds } }).fetch();
-        this.games = {};
+        const gamesMap = {};
         games.forEach(game => {
-          this.games[game._id] = game;
+          gamesMap[game._id] = game;
+        });
+
+        // Embed game in each item
+        items.forEach(item => {
+          item.game = gamesMap[item.gameId] || null;
         });
 
         // Sort client-side
         if (sortField === 'title') {
           items.sort((a, b) => {
-            const gameA = this.games[a.gameId] || {};
-            const gameB = this.games[b.gameId] || {};
-            const titleA = (gameA.title || '').toLowerCase();
-            const titleB = (gameB.title || '').toLowerCase();
+            const titleA = (a.game?.title || '').toLowerCase();
+            const titleB = (b.game?.title || '').toLowerCase();
             if (titleA < titleB) {
               return sortDirection === 1 ? -1 : 1;
             }
@@ -217,13 +220,9 @@ const CollectionContent = {
     options.skip = 0;
 
     try {
-      const result = await Meteor.callAsync('collection.getItemsChunk', options);
-      const newItems = result.items || [];
+      // Method now returns items directly with game embedded in each item
+      const newItems = await Meteor.callAsync('collection.getItemsChunk', options);
       this.items = newItems;  // Initial load starts at index 0
-      this.games = {};
-      (result.games || []).forEach(game => {
-        this.games[game._id] = game;
-      });
       this.loadedCount = newItems.length;
       // Track the initial loaded range
       if (newItems.length > 0) {
@@ -462,40 +461,44 @@ const CollectionContent = {
       return; // Not close enough to boundary
     }
 
-    if (nextChunkStart >= this.totalCount) {
-      return; // No more chunks to load
-    }
+    // Prefetch chunk+1 and chunk+2 for smoother scrolling
+    const chunksToFetch = [nextChunkStart, nextChunkStart + INFINITE_CHUNK_SIZE];
 
-    if (this.isRangeLoaded(nextChunkStart, nextChunkStart + INFINITE_CHUNK_SIZE - 1)) {
-      return; // Already loaded
-    }
+    for (const chunkStart of chunksToFetch) {
+      if (chunkStart >= this.totalCount) {
+        continue; // No more chunks to load
+      }
 
-    if (this.pendingChunks.has(nextChunkStart)) {
-      return; // Already being fetched
-    }
+      if (this.isRangeLoaded(chunkStart, chunkStart + INFINITE_CHUNK_SIZE - 1)) {
+        continue; // Already loaded
+      }
 
-    // Background prefetch
-    this.pendingChunks.add(nextChunkStart);
+      if (this.pendingChunks.has(chunkStart)) {
+        continue; // Already being fetched
+      }
+
+      // Background prefetch (don't await, let them run in parallel)
+      this.prefetchSingleChunk(chunkStart);
+    }
+  },
+
+  async prefetchSingleChunk(chunkStart) {
+    this.pendingChunks.add(chunkStart);
 
     try {
       const options = this.buildFilterOptions();
       options.limit = INFINITE_CHUNK_SIZE;
-      options.skip = nextChunkStart;
+      options.skip = chunkStart;
 
-      const result = await Meteor.callAsync('collection.getItemsChunk', options);
-      const newItems = result.items || [];
-      const newGames = result.games || [];
-
-      newGames.forEach(game => {
-        this.games[game._id] = game;
-      });
+      // Method now returns items directly with game embedded
+      const newItems = await Meteor.callAsync('collection.getItemsChunk', options);
 
       newItems.forEach((item, itemIndex) => {
-        this.items[nextChunkStart + itemIndex] = item;
+        this.items[chunkStart + itemIndex] = item;
       });
 
       if (newItems.length > 0) {
-        this.loadedRanges.push([nextChunkStart, nextChunkStart + newItems.length - 1]);
+        this.loadedRanges.push([chunkStart, chunkStart + newItems.length - 1]);
         this.mergeAdjacentRanges();
       }
 
@@ -504,7 +507,7 @@ const CollectionContent = {
     } catch (error) {
       console.error('Prefetch failed:', error);
     } finally {
-      this.pendingChunks.delete(nextChunkStart);
+      this.pendingChunks.delete(chunkStart);
     }
   },
 
@@ -521,14 +524,8 @@ const CollectionContent = {
     options.skip = fromIndex;
 
     try {
-      const result = await Meteor.callAsync('collection.getItemsChunk', options);
-      const newItems = result.items || [];
-      const newGames = result.games || [];
-
-      // Merge games into lookup
-      newGames.forEach(game => {
-        this.games[game._id] = game;
-      });
+      // Method now returns items directly with game embedded
+      const newItems = await Meteor.callAsync('collection.getItemsChunk', options);
 
       // Store items at their actual indices (sparse array)
       newItems.forEach((item, itemIndex) => {
@@ -644,7 +641,7 @@ const CollectionContent = {
         this.items.map(item =>
           m(GameCard, {
             key: item._id,
-            game: this.games[item.gameId],
+            game: item.game,
             collectionItem: item,
             onUpdateItem: (collectionItem) => { this.editingItem = collectionItem; },
             onRemoveItem: (id) => this.handleRemoveItem(id)
@@ -670,7 +667,6 @@ const CollectionContent = {
       // Infinite mode: virtual scroll grid
       !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.INFINITE && this.totalCount > 0 && m(VirtualScrollGrid, {
         items: this.items,
-        games: this.games,
         totalCount: this.totalCount,
         loading: this.loadingMore,
         onUpdateItem: (collectionItem) => { this.editingItem = collectionItem; },
@@ -689,7 +685,6 @@ const CollectionContent = {
       // Bookshelf mode: virtual scroll shelves
       !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.BOOKSHELF && this.totalCount > 0 && m(BookshelfView, {
         items: this.items,
-        games: this.games,
         totalCount: this.totalCount,
         theme: this.bookshelfTheme,
         loading: this.loadingMore,
@@ -708,7 +703,6 @@ const CollectionContent = {
       // Beanstalk 3D mode
       !this.isSearchPending && !this.loading && this.viewMode === VIEW_MODES.BEANSTALK && this.totalCount > 0 && m(BeanstalkView, {
         items: this.items,
-        games: this.games,
         totalCount: this.totalCount,
         onUpdateItem: (item) => { this.editingItem = item; },
         onVisibleRangeChange: (start, end, loaded) => this.handleVisibleRangeChange(start, end, loaded),
@@ -717,9 +711,9 @@ const CollectionContent = {
 
       // Show appropriate modal based on whether it's a custom game
       this.editingItem && (
-        this.games[this.editingItem.gameId]?.ownerId
+        this.editingItem.game?.ownerId
           ? m(EditCustomGameModal, {
-              game: this.games[this.editingItem.gameId],
+              game: this.editingItem.game,
               collectionItem: this.editingItem,
               onClose: () => { this.editingItem = null; },
               onSuccess: (itemId, itemUpdates, gameId, gameUpdates) => {
@@ -730,16 +724,16 @@ const CollectionContent = {
                     Object.assign(this.items[index], itemUpdates);
                   }
                 }
-                // Update local game data
-                if (gameId && this.games[gameId]) {
-                  Object.assign(this.games[gameId], gameUpdates);
+                // Update local game data (embedded in item)
+                if (this.editingItem && this.editingItem.game) {
+                  Object.assign(this.editingItem.game, gameUpdates);
                 }
                 this.editingItem = null;
               }
             })
           : m(EditItemModal, {
               item: this.editingItem,
-              game: this.games[this.editingItem.gameId],
+              game: this.editingItem.game,
               onClose: () => { this.editingItem = null; },
               onSuccess: (itemId, updates) => {
                 // Update local item data so 3D view reflects changes
