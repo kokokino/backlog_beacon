@@ -461,8 +461,8 @@ const CollectionContent = {
       return; // Not close enough to boundary
     }
 
-    // Prefetch chunk+1 and chunk+2 for smoother scrolling
-    const chunksToFetch = [nextChunkStart, nextChunkStart + INFINITE_CHUNK_SIZE];
+    // Prefetch chunk+1 (with ~12ms query times, chunk+2 is unnecessary)
+    const chunksToFetch = [nextChunkStart];
 
     for (const chunkStart of chunksToFetch) {
       if (chunkStart >= this.totalCount) {
