@@ -1,6 +1,7 @@
 import { Meteor } from 'meteor/meteor';
 import fs from 'fs';
 import { Games } from '../../imports/lib/collections/games.js';
+import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { getGameById, getGamesByIds, getCoverUrl, findGameByName, sanitizeSearchQuery } from './client.js';
 import { queueCoverDownload, CoverQueue, QueueStatus } from '../covers/coverQueue.js';
 import { GameCovers } from '../covers/coversCollection.js';
@@ -48,6 +49,36 @@ function transformIgdbGame(igdbGame) {
 // Helper to escape regex special characters
 function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Propagate game updates to the denormalized game subdocument in collectionItems
+async function propagateGameUpdates(gameId, gameData) {
+  const updates = {};
+
+  if (gameData.title !== undefined) {
+    updates['game.title'] = gameData.title;
+  }
+  if (gameData.releaseYear !== undefined) {
+    updates['game.releaseYear'] = gameData.releaseYear;
+  }
+  if (gameData.genres !== undefined) {
+    updates['game.genres'] = gameData.genres;
+  }
+  if (gameData.coverImageId !== undefined) {
+    updates['game.coverImageId'] = gameData.coverImageId;
+  }
+  if (gameData.igdbCoverUrl !== undefined) {
+    updates['game.igdbCoverUrl'] = gameData.igdbCoverUrl;
+  }
+  // Note: localCoverUrl is propagated separately by coverProcessor when cover is downloaded
+
+  if (Object.keys(updates).length > 0) {
+    await CollectionItems.updateAsync(
+      { gameId },
+      { $set: updates },
+      { multi: true }
+    );
+  }
 }
 
 // Check if a cover file is missing from the ACTIVE storage backend
@@ -283,18 +314,31 @@ export async function refreshGame(gameId) {
   // Clear local cover reference if cover changed
   if (coverChanged && game.localCoverId) {
     gameData.localCoverId = null;
+    gameData.localCoverUrl = null;
     gameData.localCoverUpdatedAt = null;
   }
-  
+
   await Games.updateAsync(gameId, { $set: gameData });
-  
+
+  // Propagate changes to collectionItems
+  await propagateGameUpdates(gameId, gameData);
+
+  // Also clear localCoverUrl in collectionItems if cover changed
+  if (coverChanged && game.localCoverId) {
+    await CollectionItems.updateAsync(
+      { gameId },
+      { $set: { 'game.localCoverUrl': null } },
+      { multi: true }
+    );
+  }
+
   // Queue cover download if cover changed or we don't have one
   if ((coverChanged || needsCover) && igdbGame.cover?.image_id) {
     queueCoverDownload(gameId, igdbGame.cover.image_id, 3).catch(error => {
       console.error('Error queueing cover download during refresh:', error);
     });
   }
-  
+
   return Games.findOneAsync(gameId);
 }
 
@@ -346,10 +390,24 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
           // Clear local cover reference if cover changed
           if (coverChanged && existingGame.localCoverId) {
             gameData.localCoverId = null;
+            gameData.localCoverUrl = null;
             gameData.localCoverUpdatedAt = null;
           }
 
           await Games.updateAsync(existingGame._id, { $set: gameData });
+
+          // Propagate changes to collectionItems
+          await propagateGameUpdates(existingGame._id, gameData);
+
+          // Also clear localCoverUrl in collectionItems if cover changed
+          if (coverChanged && existingGame.localCoverId) {
+            await CollectionItems.updateAsync(
+              { gameId: existingGame._id },
+              { $set: { 'game.localCoverUrl': null } },
+              { multi: true }
+            );
+          }
+
           totalRefreshed++;
 
           // Queue cover download if cover changed or we don't have one
@@ -375,6 +433,12 @@ export async function refreshStaleGames(maxAgeMs = 24 * 60 * 60 * 1000) {
             await Games.updateAsync(game._id, {
               $set: { localCoverId: null, localCoverUrl: null }
             });
+            // Also clear in collectionItems
+            await CollectionItems.updateAsync(
+              { gameId: game._id },
+              { $set: { 'game.localCoverUrl': null } },
+              { multi: true }
+            );
           }
           // Delete any existing COMPLETED queue item so we can re-queue
           await CoverQueue.removeAsync({
