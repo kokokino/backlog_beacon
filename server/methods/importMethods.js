@@ -11,6 +11,7 @@ import {
   clearGogProgress
 } from '../imports/gogImport.js';
 import { importEpicLibrary } from '../imports/epicImport.js';
+import { importAmazonLibrary } from '../imports/amazonImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -467,5 +468,30 @@ Meteor.methods({
     };
 
     return importEpicLibrary(this.userId, authCode, importOptions);
+  },
+
+  // Import Amazon Games library using authorization code and PKCE
+  async 'import.amazon'(authCode, codeVerifier, deviceSerial, options) {
+    check(authCode, String);
+    check(codeVerifier, String);
+    check(deviceSerial, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importAmazonLibrary(this.userId, authCode, codeVerifier, deviceSerial, importOptions);
   }
 });

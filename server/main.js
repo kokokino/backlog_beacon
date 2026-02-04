@@ -30,6 +30,7 @@ import './scheduled/gameRefresh.js';
 
 // Import HTTP routes
 import './routes/imageProxy.js';
+import './routes/amazonCallback.js';
 
 // Import migrations
 import './migrations/0_steps.js';
