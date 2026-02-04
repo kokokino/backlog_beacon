@@ -75,6 +75,9 @@ const ImportContent = {
     this.gogLoginWindow = null;
     this.gogLoginCheckInterval = null;
 
+    // Epic-specific state
+    this.epicAuthCode = null; // In-memory only, never persisted
+
     // Export state
     this.exporting = false;
     this.exportError = null;
@@ -375,6 +378,7 @@ const ImportContent = {
     this.gogUsername = '';
     this.gogMethod = 'public';
     this.gogSessionCookie = null;
+    this.epicAuthCode = null;
     this.storefrontPreview = null;
     this.storefrontResult = null;
     this.storefrontError = null;
@@ -1237,7 +1241,8 @@ const ImportContent = {
         }, [
           m('option', { value: '' }, '-- Select a storefront --'),
           m('option', { value: 'steam' }, 'Steam'),
-          m('option', { value: 'gog' }, 'GOG')
+          m('option', { value: 'gog' }, 'GOG'),
+          m('option', { value: 'epic' }, 'Epic Games Store')
         ])
       ]),
 
@@ -1246,6 +1251,9 @@ const ImportContent = {
 
       // GOG form
       this.storefrontType === 'gog' && this.renderGogForm(),
+
+      // Epic form
+      this.storefrontType === 'epic' && this.renderEpicForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -1612,6 +1620,140 @@ const ImportContent = {
           onclick: () => isPublicMethod ? this.importGogPublic() : this.importGogAuth()
         }, this.storefrontImporting ? 'Importing...' : `Import ${this.storefrontPreview.total} Games`)
       ])
+    ]);
+  },
+
+  // Epic-specific methods
+  updateEpicAuthCode(value) {
+    this.epicAuthCode = value.trim() || null;
+  },
+
+  clearEpicAuth() {
+    this.epicAuthCode = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importEpic() {
+    if (!this.epicAuthCode) {
+      this.storefrontError = 'Please enter your Epic Games authorization code.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.epic', this.epicAuthCode, {
+        updateExisting: this.storefrontOptions.updateExisting,
+        importPlaytime: this.storefrontOptions.importPlaytime
+      });
+      // Clear auth code after successful import (security best practice)
+      this.epicAuthCode = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderEpicForm() {
+    const hasAuthCode = !!this.epicAuthCode;
+
+    return m('div.epic-form', [
+      // Instructions
+      m('div.epic-instructions', { style: 'margin-bottom: 1rem;' }, [
+        m('h4', 'How to get your authorization code:'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', [
+            'Click this link to open Epic Games login: ',
+            m('a', {
+              href: 'https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b15921876da36f9a%26responseType%3Dcode',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'Get Authorization Code')
+          ]),
+          m('li', 'Log in to your Epic Games account if prompted'),
+          m('li', 'You will see a page with JSON containing your authorization code'),
+          m('li', 'Copy the value next to "authorizationCode" (without quotes)')
+        ])
+      ]),
+
+      // Auth code input
+      m('div.form-group', [
+        m('label', { for: 'epic-auth-code' }, 'Authorization Code'),
+        m('input', {
+          type: 'text',
+          id: 'epic-auth-code',
+          placeholder: 'Paste your authorization code here...',
+          value: this.epicAuthCode || '',
+          disabled: this.storefrontImporting,
+          oninput: (event) => this.updateEpicAuthCode(event.target.value)
+        }),
+        m('small', 'The code looks like a long string of letters and numbers.')
+      ]),
+
+      hasAuthCode && m('div.auth-status', { style: 'margin-bottom: 1rem;' }, [
+        m('span', { style: 'color: var(--ins-color);' }, 'Authorization code provided'),
+        ' ',
+        m('button.outline.secondary', {
+          style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+          onclick: () => this.clearEpicAuth()
+        }, 'Clear')
+      ]),
+
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your authorization code is only used once to fetch your library and is never stored. It will be cleared after import.'
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ]),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importPlaytime,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.importPlaytime = event.target.checked;
+            }
+          }),
+          ' Import playtime hours'
+        ])
+      ]),
+
+      // Import button (no preview step - auth codes are single-use)
+      !this.storefrontResult && m('button', {
+        disabled: !hasAuthCode || this.storefrontImporting,
+        onclick: () => this.importEpic()
+      }, this.storefrontImporting ? 'Importing...' : 'Import from Epic')
     ]);
   },
 

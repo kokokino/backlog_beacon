@@ -10,6 +10,7 @@ import {
   importGogLibraryWithAuth,
   clearGogProgress
 } from '../imports/gogImport.js';
+import { importEpicLibrary } from '../imports/epicImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -441,5 +442,30 @@ Meteor.methods({
     };
 
     return importGogLibraryWithAuth(this.userId, sessionCookie, importOptions);
+  },
+
+  // Import Epic Games Store library using authorization code
+  async 'import.epic'(authCode, options) {
+    check(authCode, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean),
+      importPlaytime: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false,
+      importPlaytime: options?.importPlaytime !== false
+    };
+
+    return importEpicLibrary(this.userId, authCode, importOptions);
   }
 });
