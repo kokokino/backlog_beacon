@@ -82,9 +82,7 @@ const ImportContent = {
     this.amazonAuthCode = null; // In-memory only, never persisted
     this.amazonCodeVerifier = null; // PKCE verifier, generated dynamically
     this.amazonDeviceSerial = null; // Unique device ID for this auth session
-    this.amazonOAuthUrl = null; // Generated with code challenge
     this.amazonLoginWindow = null; // Popup window reference
-    this.amazonMessageHandler = null; // postMessage event handler
 
     // Export state
     this.exporting = false;
@@ -123,12 +121,9 @@ const ImportContent = {
     if (this.gogLoginWindow && !this.gogLoginWindow.closed) {
       this.gogLoginWindow.close();
     }
-    // Clean up Amazon login popup resources
+    // Clean up Amazon login popup
     if (this.amazonLoginWindow && !this.amazonLoginWindow.closed) {
       this.amazonLoginWindow.close();
-    }
-    if (this.amazonMessageHandler) {
-      window.removeEventListener('message', this.amazonMessageHandler);
     }
   },
   
@@ -397,14 +392,9 @@ const ImportContent = {
     this.amazonAuthCode = null;
     this.amazonCodeVerifier = null;
     this.amazonDeviceSerial = null;
-    this.amazonOAuthUrl = null;
-    // Clean up Amazon popup resources
+    // Clean up Amazon popup
     if (this.amazonLoginWindow && !this.amazonLoginWindow.closed) {
       this.amazonLoginWindow.close();
-    }
-    if (this.amazonMessageHandler) {
-      window.removeEventListener('message', this.amazonMessageHandler);
-      this.amazonMessageHandler = null;
     }
     this.amazonLoginWindow = null;
     this.storefrontPreview = null;
@@ -1705,11 +1695,6 @@ const ImportContent = {
 
   // Amazon-specific methods
   openAmazonLogin() {
-    // Clean up any existing handler
-    if (this.amazonMessageHandler) {
-      window.removeEventListener('message', this.amazonMessageHandler);
-    }
-
     // Generate a random 45-character code verifier for PKCE
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
     let verifier = '';
@@ -1717,20 +1702,6 @@ const ImportContent = {
       verifier += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     this.amazonCodeVerifier = verifier;
-
-    // Set up message handler to receive the auth code from the popup
-    this.amazonMessageHandler = (event) => {
-      // Only accept messages from our own origin
-      if (event.origin !== window.location.origin) {
-        return;
-      }
-      if (event.data?.type === 'amazon-auth-code' && event.data?.code) {
-        this.amazonAuthCode = event.data.code;
-        this.storefrontError = null;
-        m.redraw();
-      }
-    };
-    window.addEventListener('message', this.amazonMessageHandler);
 
     // Create SHA-256 hash and base64url encode it for the code challenge
     const encoder = new TextEncoder();
@@ -1803,13 +1774,8 @@ const ImportContent = {
     this.amazonAuthCode = null;
     this.amazonCodeVerifier = null;
     this.amazonDeviceSerial = null;
-    this.amazonOAuthUrl = null;
     if (this.amazonLoginWindow && !this.amazonLoginWindow.closed) {
       this.amazonLoginWindow.close();
-    }
-    if (this.amazonMessageHandler) {
-      window.removeEventListener('message', this.amazonMessageHandler);
-      this.amazonMessageHandler = null;
     }
     this.amazonLoginWindow = null;
     this.storefrontResult = null;
@@ -1837,11 +1803,6 @@ const ImportContent = {
       this.amazonAuthCode = null;
       this.amazonCodeVerifier = null;
       this.amazonDeviceSerial = null;
-      this.amazonOAuthUrl = null;
-      if (this.amazonMessageHandler) {
-        window.removeEventListener('message', this.amazonMessageHandler);
-        this.amazonMessageHandler = null;
-      }
 
       // Clear progress after a short delay
       setTimeout(async () => {
