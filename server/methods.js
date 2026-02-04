@@ -10,6 +10,7 @@ import { isUsingB2 } from './covers/storageClient.js';
 import { deleteFromB2, extractKeyFromB2Url } from './covers/b2Storage.js';
 import { GameCovers } from './covers/coversCollection.js';
 import { sanitizeSearchQuery } from './igdb/client.js';
+import { buildEmbeddedGame } from './lib/gameHelpers.js';
 
 const RATE_LIMIT_WINDOW = 1000;
 const RATE_LIMIT_MAX = 10;
@@ -117,6 +118,7 @@ Meteor.methods({
       userId: this.userId,
       gameId: gameId,
       igdbId: game.igdbId || null,
+      game: buildEmbeddedGame(game),
       platforms: platforms,
       storefronts: storefronts,
       status: status,
@@ -131,7 +133,7 @@ Meteor.methods({
       createdAt: now,
       updatedAt: now
     });
-    
+
     return itemId;
   },
   
@@ -473,49 +475,7 @@ Meteor.methods({
 
     await checkRateLimit(this.userId, 'collection.getCount');
 
-    // If search is provided, we need to use aggregation with $lookup
-    if (filters.search && filters.search.trim().length > 0) {
-      const pipeline = [
-        { $match: { userId: this.userId } }
-      ];
-
-      // Add other filters before $lookup
-      if (filters.status) {
-        pipeline[0].$match.status = filters.status;
-      }
-      if (filters.platform) {
-        pipeline[0].$match.platforms = filters.platform;
-      }
-      if (filters.storefront) {
-        pipeline[0].$match.storefronts = filters.storefront;
-      }
-      if (filters.favorite === true) {
-        pipeline[0].$match.favorite = true;
-      }
-
-      // Join with games to search by title
-      pipeline.push({
-        $lookup: {
-          from: 'games',
-          localField: 'gameId',
-          foreignField: '_id',
-          as: 'game'
-        }
-      });
-      pipeline.push({ $unwind: { path: '$game', preserveNullAndEmptyArrays: true } });
-      pipeline.push({
-        $match: {
-          'game.title': { $regex: filters.search.trim(), $options: 'i' }
-        }
-      });
-      pipeline.push({ $count: 'count' });
-
-      const rawCollection = CollectionItems.rawCollection();
-      const result = await rawCollection.aggregate(pipeline).toArray();
-      return result[0]?.count || 0;
-    }
-
-    // Simple query without search
+    // Build query using embedded game data (no $lookup needed)
     const query = { userId: this.userId };
 
     if (filters.status) {
@@ -532,6 +492,11 @@ Meteor.methods({
 
     if (filters.favorite === true) {
       query.favorite = true;
+    }
+
+    // Search uses embedded game.title (no $lookup needed)
+    if (filters.search && filters.search.trim().length > 0) {
+      query['game.title'] = { $regex: filters.search.trim(), $options: 'i' };
     }
 
     const count = await CollectionItems.countDocuments(query);
@@ -561,7 +526,7 @@ Meteor.methods({
     const limit = Math.min(options.limit || 100, 200);
     const skip = options.skip || 0;
 
-    // Build match stage
+    // Build match stage using embedded game data (no $lookup needed)
     const matchStage = { userId: this.userId };
 
     if (options.status) {
@@ -576,42 +541,23 @@ Meteor.methods({
       matchStage.favorite = true;
     }
 
-    const searchTerm = options.search && options.search.trim().length > 0 ? options.search.trim() : null;
-
-    // Use aggregation to join with games for sorting by title and searching
-    // Simple localField/foreignField lookup is faster than pipeline-style
-    const pipeline = [
-      { $match: matchStage },
-      {
-        $lookup: {
-          from: 'games',
-          localField: 'gameId',
-          foreignField: '_id',
-          as: 'game'
-        }
-      },
-      { $unwind: { path: '$game', preserveNullAndEmptyArrays: true } },
-      // Filter by ownerId after unwind (custom games are only visible to their owner)
-      {
-        $match: {
-          $or: [
-            { 'game.ownerId': { $exists: false } },
-            { 'game.ownerId': null },
-            { 'game.ownerId': this.userId },
-            { game: { $exists: false } }  // preserveNullAndEmptyArrays case
-          ]
-        }
-      }
+    // Filter by embedded game.ownerId for custom game privacy
+    matchStage.$or = [
+      { 'game.ownerId': { $exists: false } },
+      { 'game.ownerId': null },
+      { 'game.ownerId': this.userId }
     ];
 
-    // Add search filter after $lookup
+    // Search uses embedded game.title
+    const searchTerm = options.search && options.search.trim().length > 0 ? options.search.trim() : null;
     if (searchTerm) {
-      pipeline.push({
-        $match: {
-          'game.title': { $regex: searchTerm, $options: 'i' }
-        }
-      });
+      matchStage['game.title'] = { $regex: searchTerm, $options: 'i' };
     }
+
+    // Build aggregation pipeline (no $lookup - uses denormalized game data)
+    const pipeline = [
+      { $match: matchStage }
+    ];
 
     // Add sort field and sort
     if (isNameSort) {
@@ -629,7 +575,7 @@ Meteor.methods({
     pipeline.push({ $skip: skip });
     pipeline.push({ $limit: limit });
 
-    // Remove sort field from results, keep game embedded in each item
+    // Remove temporary sort field from results
     pipeline.push({
       $project: {
         sortTitle: 0
@@ -639,7 +585,7 @@ Meteor.methods({
     const rawCollection = CollectionItems.rawCollection();
     const items = await rawCollection.aggregate(pipeline).toArray();
 
-    // Each item now has its game embedded directly as item.game
+    // Each item has game embedded as item.game (denormalized)
     return items;
   },
 

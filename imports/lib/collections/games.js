@@ -23,7 +23,6 @@ export const Games = new Mongo.Collection('games');
 //   summary: String,          // Game description
 //   storyline: String,        // Story description
 //   coverImageId: String,     // IGDB image_id for cover
-//   coverUrl: String,         // Legacy cover URL field
 //   igdbCoverUrl: String,     // Fallback IGDB CDN URL
 //   localCoverId: String,     // ostrio:files ID for downloaded/uploaded cover
 //   localCoverUrl: String,    // Local cover URL (after processing)

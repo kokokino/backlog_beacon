@@ -8,3 +8,4 @@ import './4_add_gamename_sort_index.js';
 import './5_add_game_title_name_indexes.js';
 import './6_create_used_nonces_ttl_index.js';
 import './7_schema_cleanup.js';
+import './8_denormalize_game_data.js';

@@ -3,6 +3,7 @@ import { CollectionItems } from '../../imports/lib/collections/collectionItems.j
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { isConfigured } from '../igdb/client.js';
+import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 const GOG_PUBLIC_API = 'https://www.gog.com/u';
 const GOG_ACCOUNT_API = 'https://www.gog.com/account/getFilteredProducts';
@@ -477,6 +478,7 @@ async function processGogImport(userId, games, options) {
         // Only set gameId/igdbId if found - omitting allows sparse index to work
         if (gameId) {
           collectionItem.gameId = gameId;
+          collectionItem.game = buildEmbeddedGame(cachedGame);
         }
         if (igdbId) {
           collectionItem.igdbId = igdbId;

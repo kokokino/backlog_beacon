@@ -30,8 +30,6 @@ export function getCoverSources(game) {
     igdbCoverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${game.coverImageId}.jpg`;
   } else if (game.igdbCoverUrl) {
     igdbCoverUrl = game.igdbCoverUrl;
-  } else if (game.coverUrl) {
-    igdbCoverUrl = game.coverUrl;
   }
 
   return { localCoverUrl, igdbCoverUrl };

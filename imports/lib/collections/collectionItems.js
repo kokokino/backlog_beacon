@@ -6,8 +6,17 @@ export const CollectionItems = new Mongo.Collection('collectionItems');
 // {
 //   _id: String,              // MongoDB ID
 //   userId: String,           // Meteor user ID (owner)
-//   gameId: String,           // Reference to Games collection
+//   gameId: String,           // Reference to Games collection (source of truth)
 //   igdbId: Number,           // IGDB game ID (denormalized for queries)
+//   game: {                   // Denormalized game data for fast queries (no $lookup)
+//     title: String,          // Game title (for display and sorting)
+//     releaseYear: Number,    // Year of first release
+//     ownerId: String,        // null = IGDB game, set = custom game (privacy)
+//     genres: [String],       // Array of genre names
+//     localCoverUrl: String,  // Local WebP cover (highest priority)
+//     coverImageId: String,   // IGDB image_id to construct URL
+//     igdbCoverUrl: String    // Pre-built IGDB CDN URL
+//   },
 //   platforms: [String],      // All platforms user owns it on
 //   storefronts: [String],    // Storefront IDs where purchased (steam, gog, epic, etc.)
 //   status: String,           // 'backlog', 'playing', 'completed', 'abandoned', 'wishlist'

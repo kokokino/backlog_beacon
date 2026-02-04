@@ -229,6 +229,26 @@ Meteor.methods({
 
     await Games.updateAsync(gameId, { $set: updateFields });
 
+    // Propagate changes to collectionItems that reference this game
+    const gameUpdates = {};
+    if (updateFields.title !== undefined) {
+      gameUpdates['game.title'] = updateFields.title;
+    }
+    if (updateFields.releaseYear !== undefined) {
+      gameUpdates['game.releaseYear'] = updateFields.releaseYear;
+    }
+    if (updateFields.genres !== undefined) {
+      gameUpdates['game.genres'] = updateFields.genres;
+    }
+
+    if (Object.keys(gameUpdates).length > 0) {
+      await CollectionItems.updateAsync(
+        { gameId },
+        { $set: gameUpdates },
+        { multi: true }
+      );
+    }
+
     return true;
   },
 
@@ -297,6 +317,13 @@ Meteor.methods({
         updatedAt: new Date()
       }
     });
+
+    // Propagate localCoverUrl to collectionItems that reference this game
+    await CollectionItems.updateAsync(
+      { gameId },
+      { $set: { 'game.localCoverUrl': coverResult.localCoverUrl } },
+      { multi: true }
+    );
 
     return coverResult.localCoverUrl;
   }

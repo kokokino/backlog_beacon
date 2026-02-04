@@ -4,6 +4,7 @@ import { ImportProgress } from '../../imports/lib/collections/importProgress.js'
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { parseCSVToObjects } from './csvParser.js';
+import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 // Map Darkadia status to our status
 function mapStatus(darkadiaRow) {
@@ -176,6 +177,7 @@ async function importRow(userId, row, options = {}) {
   // Only set gameId/igdbId if found - omitting allows sparse index to work
   if (gameId) {
     collectionItem.gameId = gameId;
+    collectionItem.game = buildEmbeddedGame(game);
   }
   if (igdbId) {
     collectionItem.igdbId = igdbId;

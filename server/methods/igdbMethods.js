@@ -58,38 +58,6 @@ function transformIgdbGameForCache(igdbGame) {
 }
 
 Meteor.methods({
-  async 'igdb.search'(query) {
-    check(query, String);
-    
-    if (!this.userId) {
-      throw new Meteor.Error('not-authorized', 'Must be logged in to search');
-    }
-    
-    if (!isConfigured()) {
-      throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
-    }
-    
-    await checkSearchRateLimit(this.userId);
-    
-    if (query.trim().length < 2) {
-      return [];
-    }
-    
-    const results = await searchGames(query, 20);
-    
-    return results.map(game => ({
-      igdbId: game.id,
-      name: game.name,
-      slug: game.slug,
-      summary: game.summary,
-      coverUrl: game.cover?.image_id ? getCoverUrl(game.cover.image_id, 'cover_small') : null,
-      platforms: game.platforms?.map(p => p.name) || [],
-      genres: game.genres?.map(g => g.name) || [],
-      releaseDate: game.first_release_date ? new Date(game.first_release_date * 1000) : null,
-      developer: game.involved_companies?.find(ic => ic.developer)?.company?.name || null
-    }));
-  },
-  
   async 'igdb.searchAndCache'(query) {
     check(query, String);
     
@@ -279,7 +247,6 @@ Meteor.methods({
           platforms: 1,
           genres: 1,
           releaseYear: 1,
-          coverUrl: 1,
           coverImageId: 1,
           igdbCoverUrl: 1,
           localCoverId: 1,

@@ -16,6 +16,7 @@ import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { isConfigured } from '../igdb/client.js';
 import { checkCooldownRateLimit } from '../lib/distributedRateLimit.js';
+import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 // Rate limiting for imports (distributed across instances)
 const IMPORT_RATE_LIMIT_MS = 60000; // 1 minute between imports
@@ -285,6 +286,7 @@ Meteor.methods({
             userId: this.userId,
             gameId: gameId,
             igdbId: igdbId,
+            game: buildEmbeddedGame(cachedGame),
             platforms: game.platform ? [game.platform] : [],
             storefronts: storefronts,
             status: 'backlog',

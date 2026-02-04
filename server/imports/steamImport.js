@@ -3,6 +3,7 @@ import { CollectionItems } from '../../imports/lib/collections/collectionItems.j
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { isConfigured } from '../igdb/client.js';
+import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 const STEAM_API_BASE = 'https://api.steampowered.com';
 const MAX_RETRIES = 5;
@@ -387,6 +388,7 @@ export async function importSteamLibrary(userId, steamUsername, options = {}) {
         // Only set gameId/igdbId if found - omitting allows sparse index to work
         if (gameId) {
           collectionItem.gameId = gameId;
+          collectionItem.game = buildEmbeddedGame(cachedGame);
         }
         if (igdbId) {
           collectionItem.igdbId = igdbId;

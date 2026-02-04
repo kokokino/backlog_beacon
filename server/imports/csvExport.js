@@ -5,6 +5,7 @@ import { ImportProgress } from '../../imports/lib/collections/importProgress.js'
 import { getStorefrontById, findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { parseCSVToObjects } from './csvParser.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
+import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 // Update progress for Backlog Beacon import
 async function updateBacklogProgress(userId, progressData) {
@@ -347,6 +348,7 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
   // Only set gameId/igdbId if found - omitting allows sparse index to work
   if (game?._id) {
     collectionItem.gameId = game._id;
+    collectionItem.game = buildEmbeddedGame(game);
   }
   if (igdbId) {
     collectionItem.igdbId = igdbId;

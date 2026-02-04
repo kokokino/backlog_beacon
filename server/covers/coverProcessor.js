@@ -12,6 +12,7 @@ import {
   cleanupQueue
 } from './coverQueue.js';
 import { Games } from '../../imports/lib/collections/games.js';
+import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { getCoverUrl } from '../igdb/client.js';
 import { isUsingB2 } from './storageClient.js';
 import { uploadToB2, uploadStreamToB2 } from './b2Storage.js';
@@ -116,6 +117,13 @@ async function processQueueItem(item) {
       localCoverUpdatedAt: new Date()
     }
   });
+
+  // Propagate localCoverUrl to all collectionItems that reference this game
+  await CollectionItems.updateAsync(
+    { gameId: item.gameId },
+    { $set: { 'game.localCoverUrl': coverUrl } },
+    { multi: true }
+  );
 
   return coverId;
 }
