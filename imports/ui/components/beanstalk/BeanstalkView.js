@@ -61,7 +61,7 @@ export const BeanstalkView = {
 
   onremove(vnode) {
     if (this.scene) {
-      this.scene.dispose();
+      this.scene.disposeAsync(); // Fire-and-forget
       this.scene = null;
     }
   },

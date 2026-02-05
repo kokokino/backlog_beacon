@@ -144,10 +144,11 @@ export class BeanstalkScene {
     this.textureCache.initPlaceholders(this.scene);
 
     // Handle resize
-    window.addEventListener('resize', () => {
+    this.onResize = () => {
       this.engine.resize();
       this.updateCameraForViewport();
-    });
+    };
+    window.addEventListener('resize', this.onResize);
   }
 
   updateCameraForViewport() {
@@ -1138,7 +1139,19 @@ export class BeanstalkScene {
     }
   }
 
-  dispose() {
+  async disposeAsync() {
+    // Stop render loop immediately to prevent rendering during disposal
+    if (this.engine) {
+      this.engine.stopRenderLoop();
+    }
+
+    // Remove resize listener
+    if (this.onResize) {
+      window.removeEventListener('resize', this.onResize);
+      this.onResize = null;
+    }
+
+    // Immediate cleanup (non-blocking)
     if (this.input) {
       this.input.dispose();
     }
@@ -1154,18 +1167,36 @@ export class BeanstalkScene {
     if (this.roosterAnimations) {
       this.roosterAnimations.forEach(anim => anim.dispose());
     }
+
+    // Chunked async disposal
     if (this.branchPool) {
-      this.branchPool.dispose();
+      await this.branchPool.disposeAsync();
     }
     if (this.gameCasePool) {
-      this.gameCasePool.dispose();
+      await this.gameCasePool.disposeAsync();
     }
     if (this.textureCache) {
-      this.textureCache.dispose();
+      await this.textureCache.disposeAsync();
     }
+
+    // Longer delay before heavy cleanup to let UI settle
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Final cleanup
     if (this.plant) {
       this.plant.dispose();
     }
+
+    // Use requestIdleCallback for engine disposal (heaviest operation)
+    // This only runs when browser is idle, minimizing UI impact
+    await new Promise(resolve => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => resolve(), { timeout: 2000 });
+      } else {
+        setTimeout(resolve, 100);
+      }
+    });
+
     if (this.engine) {
       this.engine.dispose();
     }

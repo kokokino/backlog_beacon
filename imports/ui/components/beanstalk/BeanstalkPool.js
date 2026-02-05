@@ -37,6 +37,22 @@ export class ObjectPool {
     this.pool = [];
     this.avail = [];
   }
+
+  async disposeAsync() {
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < this.pool.length; i += CHUNK_SIZE) {
+      const chunk = this.pool.slice(i, i + CHUNK_SIZE);
+      chunk.forEach(obj => {
+        if (obj && typeof obj.dispose === 'function') {
+          obj.dispose();
+        }
+      });
+      // Yield a full frame to browser
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    this.pool = [];
+    this.avail = [];
+  }
 }
 
 /**
@@ -432,6 +448,38 @@ export class TextureCache {
         entry.texture.dispose();
       }
     });
+    this.entries.clear();
+    this.accessOrder = [];
+
+    // Dispose placeholders
+    if (this.loadingPlaceholder) {
+      this.loadingPlaceholder.dispose();
+      this.loadingPlaceholder = null;
+    }
+    if (this.errorPlaceholder) {
+      this.errorPlaceholder.dispose();
+      this.errorPlaceholder = null;
+    }
+  }
+
+  async disposeAsync() {
+    const CHUNK_SIZE = 10;
+    const entries = Array.from(this.entries.values());
+
+    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+      const chunk = entries.slice(i, i + CHUNK_SIZE);
+      chunk.forEach(entry => {
+        if (entry.timeoutId) {
+          clearTimeout(entry.timeoutId);
+        }
+        if (entry.texture) {
+          entry.texture.dispose();
+        }
+      });
+      // Yield a full frame to browser
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+
     this.entries.clear();
     this.accessOrder = [];
 

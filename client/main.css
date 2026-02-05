@@ -1519,6 +1519,8 @@ dialog article footer button {
   inset: 0;
   z-index: 1000;
   background: #000;
+  overscroll-behavior: contain;
+  overflow: hidden;
 }
 
 .beanstalk-canvas {

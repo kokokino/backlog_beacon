@@ -97,9 +97,9 @@ export class BeanstalkInput {
     this.canvas.addEventListener('pointerleave', this.onPointerUp, false);
 
     // Touch events for mobile
-    this.canvas.addEventListener('touchstart', this.onTouchStart, false);
+    this.canvas.addEventListener('touchstart', this.onTouchStart, { passive: true });
     this.canvas.addEventListener('touchmove', this.onTouchMove, { passive: false });
-    this.canvas.addEventListener('touchend', this.onTouchEnd, false);
+    this.canvas.addEventListener('touchend', this.onTouchEnd, { passive: true });
 
     // Set initial cursor
     this.canvas.style.cursor = 'grab';
