@@ -12,6 +12,7 @@ import {
 } from '../imports/gogImport.js';
 import { importEpicLibrary } from '../imports/epicImport.js';
 import { importAmazonLibrary } from '../imports/amazonImport.js';
+import { importOculusLibrary } from '../imports/oculusImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -493,5 +494,35 @@ Meteor.methods({
     };
 
     return importAmazonLibrary(this.userId, authCode, codeVerifier, deviceSerial, importOptions);
+  },
+
+  // Import Oculus/Meta library using session cookie
+  async 'import.oculus'(accessToken, platform, options) {
+    check(accessToken, String);
+    check(platform, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    // Validate platform
+    const validPlatforms = ['quest', 'rift', 'go'];
+    if (!validPlatforms.includes(platform)) {
+      throw new Meteor.Error('invalid-platform', `Platform must be one of: ${validPlatforms.join(', ')}`);
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importOculusLibrary(this.userId, accessToken, platform, importOptions);
   }
 });

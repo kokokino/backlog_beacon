@@ -84,6 +84,10 @@ const ImportContent = {
     this.amazonDeviceSerial = null; // Unique device ID for this auth session
     this.amazonLoginWindow = null; // Popup window reference
 
+    // Oculus-specific state
+    this.oculusAccessToken = null; // In-memory only, never persisted
+    this.oculusPlatform = 'quest'; // 'quest', 'rift', or 'go'
+
     // Export state
     this.exporting = false;
     this.exportError = null;
@@ -397,6 +401,9 @@ const ImportContent = {
       this.amazonLoginWindow.close();
     }
     this.amazonLoginWindow = null;
+    // Reset Oculus state
+    this.oculusAccessToken = null;
+    this.oculusPlatform = 'quest';
     this.storefrontPreview = null;
     this.storefrontResult = null;
     this.storefrontError = null;
@@ -1261,7 +1268,8 @@ const ImportContent = {
           m('option', { value: 'steam' }, 'Steam'),
           m('option', { value: 'gog' }, 'GOG'),
           m('option', { value: 'epic' }, 'Epic Games Store'),
-          m('option', { value: 'amazon' }, 'Amazon Games')
+          m('option', { value: 'amazon' }, 'Amazon Games'),
+          m('option', { value: 'oculus' }, 'Oculus / Meta Quest')
         ])
       ]),
 
@@ -1276,6 +1284,9 @@ const ImportContent = {
 
       // Amazon form
       this.storefrontType === 'amazon' && this.renderAmazonForm(),
+
+      // Oculus form
+      this.storefrontType === 'oculus' && this.renderOculusForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -1923,6 +1934,176 @@ const ImportContent = {
         disabled: !hasAuthCode || this.storefrontImporting,
         onclick: () => this.importAmazon()
       }, this.storefrontImporting ? 'Importing...' : 'Import from Amazon')
+    ]);
+  },
+
+  // Oculus-specific methods
+  updateOculusAccessToken(value) {
+    this.oculusAccessToken = value.trim() || null;
+  },
+
+  setOculusPlatform(platform) {
+    this.oculusPlatform = platform;
+  },
+
+  clearOculusAuth() {
+    this.oculusAccessToken = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importOculus() {
+    if (!this.oculusAccessToken) {
+      this.storefrontError = 'Please enter your Oculus access token.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.oculus', this.oculusAccessToken, this.oculusPlatform, {
+        updateExisting: this.storefrontOptions.updateExisting
+      });
+      // Clear access token after successful import (security best practice)
+      this.oculusAccessToken = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderOculusForm() {
+    const hasAccessToken = !!this.oculusAccessToken;
+
+    return m('div.oculus-form', [
+      // Platform selector
+      m('div.form-group', [
+        m('label', { for: 'oculus-platform' }, 'Platform'),
+        m('select', {
+          id: 'oculus-platform',
+          value: this.oculusPlatform,
+          disabled: this.storefrontImporting,
+          onchange: (event) => this.setOculusPlatform(event.target.value)
+        }, [
+          m('option', { value: 'quest' }, 'Meta Quest (Quest, Quest 2, Quest 3, Quest Pro)'),
+          m('option', { value: 'rift' }, 'Oculus Rift / Rift S (PC VR)'),
+          m('option', { value: 'go' }, 'Oculus Go')
+        ])
+      ]),
+
+      // Instructions
+      m('div.oculus-instructions', { style: 'margin-bottom: 1rem;' }, [
+        m('h4', 'How to get your access token:'),
+        m('p', { style: 'margin-bottom: 0.5rem; font-weight: bold;' }, 'Option 1: From the Oculus website'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', [
+            'Go to ',
+            m('a', {
+              href: 'https://secure.oculus.com/my/quest/',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'secure.oculus.com/my/quest'),
+            ' and log in'
+          ]),
+          m('li', 'Open Developer Tools (F12 on Windows, Cmd+Option+I on Mac)'),
+          m('li', 'Go to the Application tab (Chrome) or Storage tab (Firefox)'),
+          m('li', [
+            'Expand Cookies and click on ',
+            m('code', 'https://secure.oculus.com')
+          ]),
+          m('li', [
+            'Find the cookie named ',
+            m('code', 'oc_ac_at'),
+            ' and copy the entire Value (starts with "OC")'
+          ])
+        ]),
+        m('p', { style: 'margin: 1rem 0 0.5rem 0; font-weight: bold;' }, 'Option 2: From the Oculus desktop app'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', 'Open the Oculus desktop app'),
+          m('li', [
+            'Press ',
+            m('kbd', 'Ctrl+Shift+I'),
+            ' to open Developer Tools'
+          ]),
+          m('li', [
+            'Go to the Network tab and press ',
+            m('kbd', 'Ctrl+R'),
+            ' to refresh'
+          ]),
+          m('li', [
+            'Filter for "',
+            m('code', 'graph'),
+            '", click the first result, open the Payload tab'
+          ]),
+          m('li', 'Scroll to find the access_token (starts with "FRL") and copy it')
+        ])
+      ]),
+
+      // Access token input
+      m('div.form-group', [
+        m('label', { for: 'oculus-token' }, 'Access Token'),
+        m('textarea', {
+          id: 'oculus-token',
+          rows: 3,
+          placeholder: 'Paste your access token here (starts with OC or FRL)...',
+          value: this.oculusAccessToken || '',
+          disabled: this.storefrontImporting,
+          oninput: (event) => this.updateOculusAccessToken(event.target.value)
+        })
+      ]),
+
+      hasAccessToken && m('div.auth-status', { style: 'margin-bottom: 1rem;' }, [
+        m('span', { style: 'color: var(--ins-color);' }, 'Access token provided'),
+        ' ',
+        m('button.outline.secondary', {
+          style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+          onclick: () => this.clearOculusAuth()
+        }, 'Clear')
+      ]),
+
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your access token is only used once to fetch your library and is never stored. It will be cleared after import.'
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ])
+      ]),
+
+      // Import button (no preview step - token is single-use)
+      !this.storefrontResult && m('button', {
+        disabled: !hasAccessToken || this.storefrontImporting,
+        onclick: () => this.importOculus()
+      }, this.storefrontImporting ? 'Importing...' : 'Import from Oculus')
     ]);
   },
 
