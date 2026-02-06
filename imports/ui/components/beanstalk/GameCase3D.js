@@ -117,6 +117,12 @@ export class GameCase3D {
     updateCaseBillboard(this.mesh, cameraPosition);
   }
 
+  releaseTexture() {
+    if (this.mesh.material) {
+      this.mesh.material.albedoTexture = null;
+    }
+  }
+
   setEnabled(enabled) {
     this.mesh.setEnabled(enabled);
   }
@@ -134,10 +140,16 @@ export class GameCase3D {
   }
 
   dispose() {
+    const t0 = performance.now();
     if (this.mesh.material) {
       // Don't dispose texture - it's cached
       this.mesh.material.dispose();
     }
+    const afterMaterial = performance.now();
     this.mesh.dispose();
+    const total = performance.now() - t0;
+    if (total > 5) {
+      console.log(`[dispose:GameCase3D] slow dispose: material ${(afterMaterial - t0).toFixed(1)}ms, mesh ${(performance.now() - afterMaterial).toFixed(1)}ms, total ${total.toFixed(1)}ms`);
+    }
   }
 }

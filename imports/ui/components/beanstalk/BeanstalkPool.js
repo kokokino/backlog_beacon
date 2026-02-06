@@ -38,20 +38,28 @@ export class ObjectPool {
     this.avail = [];
   }
 
-  async disposeAsync() {
+  async disposeAsync(label = 'ObjectPool') {
     const CHUNK_SIZE = 10;
+    const t0 = performance.now();
+    console.log(`[dispose:${label}] START — pool size: ${this.pool.length}, available: ${this.avail.length}`);
+
     for (let i = 0; i < this.pool.length; i += CHUNK_SIZE) {
+      const chunkStart = performance.now();
       const chunk = this.pool.slice(i, i + CHUNK_SIZE);
       chunk.forEach(obj => {
         if (obj && typeof obj.dispose === 'function') {
           obj.dispose();
         }
       });
+      const chunkMs = performance.now() - chunkStart;
+      console.log(`[dispose:${label}] chunk ${i}-${i + chunk.length - 1} disposed in ${chunkMs.toFixed(1)}ms`);
       // Yield a full frame to browser
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
+
     this.pool = [];
     this.avail = [];
+    console.log(`[dispose:${label}] DONE — total ${(performance.now() - t0).toFixed(1)}ms`);
   }
 }
 
@@ -80,6 +88,7 @@ class TextureEntry {
     this.callbacks = [];  // {mesh, material} to update on load
     this.triedProxy = false;  // Whether we've tried the CORS proxy fallback
     this.loadStartTime = null;  // When the current load attempt started
+    this.disposed = false;  // Set true when evicted, prevents orphaned async loads
   }
 }
 
@@ -187,6 +196,9 @@ export class TextureCache {
     entry.loadStartTime = Date.now();
 
     import('@babylonjs/core').then((BABYLON) => {
+      // Evicted with no callbacks waiting — skip texture creation entirely
+      if (entry.disposed && entry.callbacks.length === 0) return;
+
       // Set up timeout
       entry.timeoutId = setTimeout(() => {
         this._onLoadError(entry, scene, 'Timeout');
@@ -213,10 +225,28 @@ export class TextureCache {
    * Handle successful texture load
    */
   _onLoadSuccess(entry) {
-    // Clear timeout
     if (entry.timeoutId) {
       clearTimeout(entry.timeoutId);
       entry.timeoutId = null;
+    }
+
+    // Entry was evicted while loading
+    if (entry.disposed) {
+      if (entry.callbacks.length > 0) {
+        // Fulfill callbacks so visible materials update — texture becomes
+        // untracked but still referenced by materials, cleaned up at scene disposal
+        for (const callback of entry.callbacks) {
+          if (callback.material && !callback.material.isDisposed) {
+            callback.material.albedoTexture = entry.texture;
+          }
+        }
+        entry.callbacks = [];
+      } else if (entry.texture) {
+        // No callbacks — orphaned texture, dispose immediately
+        entry.texture.dispose();
+        entry.texture = null;
+      }
+      return;
     }
 
     entry.state = TextureState.LOADED;
@@ -234,10 +264,18 @@ export class TextureCache {
    * Handle texture load error
    */
   _onLoadError(entry, scene, reason) {
-    // Clear timeout
     if (entry.timeoutId) {
       clearTimeout(entry.timeoutId);
       entry.timeoutId = null;
+    }
+
+    // Entry was evicted while loading — dispose the orphaned texture
+    if (entry.disposed) {
+      if (entry.texture) {
+        entry.texture.dispose();
+        entry.texture = null;
+      }
+      return;
     }
 
     // Dispose failed texture
@@ -296,6 +334,9 @@ export class TextureCache {
     entry.loadStartTime = Date.now();
 
     import('@babylonjs/core').then((BABYLON) => {
+      // Evicted with no callbacks waiting — skip texture creation entirely
+      if (entry.disposed && entry.callbacks.length === 0) return;
+
       entry.timeoutId = setTimeout(() => {
         this._onLoadError(entry, scene, 'Proxy timeout');
       }, entry.timeoutMs);
@@ -331,21 +372,26 @@ export class TextureCache {
   }
 
   /**
-   * Evict oldest entries if at capacity
-   * Note: We don't dispose textures here because they may still be assigned to
-   * visible materials. Textures will be garbage collected when no longer referenced.
+   * Evict oldest entries if at capacity.
+   * Sets disposed flag so async callbacks handle cleanup:
+   *   - _startLoad/_tryProxyLoad: skip texture creation if no callbacks waiting
+   *   - _onLoadSuccess: fulfill callbacks then leave texture (materials reference it)
+   *   - _onLoadError: dispose texture and stop retries
+   *   - _scheduleRetry: entries.has() check prevents retry
+   * Loaded textures are disposed immediately — pooled cases have released their
+   * references via releaseTexture(), and visible cases' textures are at the front
+   * of the LRU (not evicted).
    */
   _evictIfNeeded() {
     while (this.entries.size >= this.maxSize && this.accessOrder.length > 0) {
       const oldest = this.accessOrder.shift();
       const entry = this.entries.get(oldest);
       if (entry) {
-        // Clear any pending timeout
-        if (entry.timeoutId) {
-          clearTimeout(entry.timeoutId);
+        entry.disposed = true;
+        if (entry.texture && entry.state === TextureState.LOADED) {
+          entry.texture.dispose();
+          entry.texture = null;
         }
-        // Don't dispose texture - it may still be used by a visible material.
-        // The texture will be garbage collected when the material is reassigned.
       }
       this.entries.delete(oldest);
     }
@@ -463,10 +509,23 @@ export class TextureCache {
   }
 
   async disposeAsync() {
-    const CHUNK_SIZE = 10;
+    const t0 = performance.now();
     const entries = Array.from(this.entries.values());
 
+    // Count entries by state
+    const stateCounts = { loaded: 0, loading: 0, pending: 0, failed: 0 };
+    let withTexture = 0;
+    for (const entry of entries) {
+      stateCounts[entry.state] = (stateCounts[entry.state] || 0) + 1;
+      if (entry.texture) {
+        withTexture++;
+      }
+    }
+    console.log(`[dispose:textureCache] START — entries: ${entries.length}, loaded: ${stateCounts.loaded}, loading: ${stateCounts.loading}, pending: ${stateCounts.pending}, failed: ${stateCounts.failed}, withTexture: ${withTexture}`);
+
+    const CHUNK_SIZE = 10;
     for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+      const chunkStart = performance.now();
       const chunk = entries.slice(i, i + CHUNK_SIZE);
       chunk.forEach(entry => {
         if (entry.timeoutId) {
@@ -476,6 +535,8 @@ export class TextureCache {
           entry.texture.dispose();
         }
       });
+      const chunkMs = performance.now() - chunkStart;
+      console.log(`[dispose:textureCache] chunk ${i}-${i + chunk.length - 1} disposed in ${chunkMs.toFixed(1)}ms`);
       // Yield a full frame to browser
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
@@ -492,6 +553,8 @@ export class TextureCache {
       this.errorPlaceholder.dispose();
       this.errorPlaceholder = null;
     }
+
+    console.log(`[dispose:textureCache] DONE — total ${(performance.now() - t0).toFixed(1)}ms`);
   }
 }
 
