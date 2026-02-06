@@ -31,6 +31,8 @@ Note: The Hub must be running (usually on port 3000) for SSO authentication to w
 - **quave:migrations** - Database migrations
 - **Babylon.js 8** - 3D beanstalk visualization
 
+This project uses Babylon.js for 3D rendering. Key concerns: texture lifecycle management, LRU eviction of cached textures, and scene disposal performance. Always consider the Babylon.js texture/material reference graph when modifying disposal or caching logic.
+
 ## Architecture
 
 ### Hub & Spoke SSO Flow
@@ -211,3 +213,15 @@ Methods throw `Meteor.Error(code, message)`:
 - `'rate-limited'` - too many requests
 
 UI displays `error.reason || error.message` in modals/toasts.
+
+## Resource Management
+
+When fixing resource leaks or disposal logic, always verify that resources being disposed are not still actively referenced by visible/in-use objects. Check for active references before any disposal operation.
+
+## Debugging Guidelines
+
+When implementing performance fixes (especially disposal/cleanup), validate the fix incrementally: first confirm the count of resources before and after, then check for visual regressions, before declaring the fix complete.
+
+## Validation Checklist
+
+After modifying disposal, caching, or eviction code, manually verify: (1) texture count via engine.getLoadedTexturesCount() or equivalent, (2) no visible artifacts (black/gray covers), (3) dispose timing with console.time measurements.
