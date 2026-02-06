@@ -1154,214 +1154,55 @@ export class BeanstalkScene {
     }
   }
 
-  async disposeAsync() {
+  dispose() {
     const t0 = performance.now();
-    const mark = (label) => console.log(`[dispose] ${label} +${(performance.now() - t0).toFixed(1)}ms`);
 
-    // Mark 1: Start with object counts
-    console.log(`[dispose] START — branches: ${this.branches.length}, gameCases: ${this.gameCases.length}, branchPool: ${this.branchPool ? this.branchPool.pool.length : 0}, gameCasePool: ${this.gameCasePool ? this.gameCasePool.pool.length : 0}, textureCache: ${this.textureCache ? this.textureCache.entries.size : 0}`);
-
-    // Stop render loop immediately to prevent rendering during disposal
+    // Stop render loop to prevent rendering during disposal
     if (this.engine) {
       this.engine.stopRenderLoop();
     }
 
-    // Remove resize listener
+    // Remove DOM event listeners
     if (this.onResize) {
       window.removeEventListener('resize', this.onResize);
       this.onResize = null;
     }
-
-    // Mark 2: After render loop stop + event listeners
-    mark('render loop stopped, listeners removed');
-
-    // Immediate cleanup (non-blocking)
     if (this.input) {
       this.input.dispose();
     }
-    if (this.effects) {
-      this.effects.dispose();
-    }
+
+    // Clear JS timers
     if (this.roosterAnimInterval) {
       clearInterval(this.roosterAnimInterval);
     }
-    if (this.rooster) {
-      this.rooster.dispose();
-    }
-    if (this.roosterAnimations) {
-      this.roosterAnimations.forEach(anim => anim.dispose());
-    }
 
-    // Mark 3: After input/effects/rooster disposal
-    mark('input, effects, rooster disposed');
-
-    // Chunked async disposal
-    if (this.branchPool) {
-      await this.branchPool.disposeAsync('branchPool');
-    }
-
-    // Mark 4: After branchPool
-    mark('branchPool disposed');
-
-    if (this.gameCasePool) {
-      await this.gameCasePool.disposeAsync('gameCasePool');
-    }
-
-    // Mark 5: After gameCasePool
-    mark('gameCasePool disposed');
-
+    // Clear in-flight texture load timeouts and dispose cached textures
     if (this.textureCache) {
-      await this.textureCache.disposeAsync();
+      this.textureCache.dispose();
     }
 
-    // Mark 6: After textureCache
-    mark('textureCache disposed');
-
-    // Dispose shared materials (after pools, since pool meshes reference them)
-    if (this.branchMaterial) {
-      this.branchMaterial.dispose(false, true);
-    }
-    if (this.leafMaterial) {
-      this.leafMaterial.dispose(false, true);
-    }
-
-    // Dispose template meshes (after pools, used as clone sources)
-    if (this.leafStalkMesh) {
-      this.leafStalkMesh.dispose();
-    }
-    if (this.leafBladeMesh) {
-      this.leafBladeMesh.dispose();
-    }
-
-    // Mark 7: After materials and templates
-    mark('materials and template meshes disposed');
-
-    // Dispose sky dome (PhotoDome with panorama texture)
-    if (this.skyDome) {
-      this.skyDome.dispose();
-    }
-
-    // Dispose rooster dirt mesh with its material and textures
-    if (this.roosterDirt) {
-      this.roosterDirt.dispose(false, true);
-    }
-
-    // Dispose camera
-    if (this.camera) {
-      this.camera.dispose();
-    }
-
-    // Dispose all remaining lights
-    if (this.scene) {
-      for (const light of this.scene.lights.slice()) {
-        light.dispose();
-      }
-    }
-
-    // Dispose all skeletons (from glTF imports)
-    if (this.scene) {
-      for (const skeleton of this.scene.skeletons.slice()) {
-        skeleton.dispose();
-      }
-    }
-
-    // Clear object reference arrays
+    // Clear reference arrays
     this.branches.length = 0;
     this.gameCases.length = 0;
 
-    // Mark 8: After remaining scene objects
-    mark('skyDome, roosterDirt, camera, lights, skeletons disposed');
-
-    // Dispose plant
-    if (this.plant) {
-      this.plant.dispose();
-    }
-
-    // Mark 9: After plant disposal
-    mark('plant disposed');
-
-    // Diagnostic: what's still in the scene before scene.dispose()?
-    if (this.scene) {
-      console.log(`[dispose] SCENE INVENTORY before scene.dispose():`,
+    // Diagnostic: what's in the scene before engine.dispose()?
+    let isShowCleanupPerformance = false;
+    if (this.scene && isShowCleanupPerformance) {
+      console.log(`[dispose] SCENE INVENTORY:`,
         `meshes: ${this.scene.meshes.length},`,
         `materials: ${this.scene.materials.length},`,
-        `textures: ${this.scene.textures.length},`,
-        `geometries: ${this.scene.getGeometryByUniqueId ? this.scene.geometries?.length : 'N/A'},`,
-        `lights: ${this.scene.lights.length},`,
-        `skeletons: ${this.scene.skeletons.length},`,
-        `animationGroups: ${this.scene.animationGroups.length},`,
-        `transformNodes: ${this.scene.transformNodes.length},`,
-        `particleSystems: ${this.scene.particleSystems.length}`
+        `textures: ${this.scene.textures.length}`
       );
-
-      // Log first 20 mesh names to identify what's left
-      if (this.scene.meshes.length > 0) {
-        const meshNames = this.scene.meshes.slice(0, 20).map(m => m.name);
-        console.log(`[dispose] First 20 remaining meshes:`, meshNames);
-      }
-      if (this.scene.materials.length > 0) {
-        const matNames = this.scene.materials.slice(0, 20).map(m => m.name);
-        console.log(`[dispose] First 20 remaining materials:`, matNames);
-      }
-
-      // Texture diagnostic: classify remaining textures by URL pattern
-      if (this.scene.textures.length > 0) {
-        const buckets = {};
-        for (const texture of this.scene.textures) {
-          const url = texture.url || texture.name || '(no url)';
-          let category;
-          if (url.startsWith('data:')) {
-            category = 'data-uri';
-          } else if (url.includes('igdb.com')) {
-            category = 'igdb';
-          } else if (url.includes('/api/image-proxy')) {
-            category = 'proxy';
-          } else if (url.includes('/covers/')) {
-            category = 'local-cover';
-          } else if (url.includes('/textures/')) {
-            category = 'scene-texture';
-          } else if (url.includes('/models/')) {
-            category = 'model-texture';
-          } else {
-            category = 'other: ' + url.substring(0, 80);
-          }
-          buckets[category] = (buckets[category] || 0) + 1;
-        }
-        console.log(`[dispose] Texture breakdown:`, buckets);
-
-        // Sample first 10 texture URLs for inspection
-        const sample = this.scene.textures.slice(0, 10).map(t => ({
-          url: (t.url || t.name || '(none)').substring(0, 100),
-          isReady: t.isReady(),
-          width: t.getSize().width,
-          height: t.getSize().height
-        }));
-        console.log(`[dispose] First 10 textures:`, sample);
-
-        // Find unique URLs to see if they're duplicates
-        const uniqueUrls = new Set(this.scene.textures.map(t => t.url || t.name || ''));
-        console.log(`[dispose] Unique texture URLs: ${uniqueUrls.size} out of ${this.scene.textures.length} total`);
-      }
-
-      // Safety net: bulk-dispose any remaining textures/materials before scene.dispose()
-      for (const texture of this.scene.textures.slice()) {
-        texture.dispose();
-      }
-      for (const material of this.scene.materials.slice()) {
-        material.dispose();
-      }
-
-      this.scene.dispose();
     }
 
-    // Mark 10: After scene disposal
-    mark('scene disposed');
-
+    // engine.dispose() calls scene.dispose() which handles all Babylon objects:
+    // meshes, materials, textures, lights, cameras, skeletons, animation groups, etc.
     if (this.engine) {
       this.engine.dispose();
     }
 
-    // Mark 11: Done
-    mark(`COMPLETE — total ${(performance.now() - t0).toFixed(1)}ms`);
+    if (isShowCleanupPerformance) {
+      console.log(`[dispose] COMPLETE — ${(performance.now() - t0).toFixed(1)}ms`);
+    }
   }
 }

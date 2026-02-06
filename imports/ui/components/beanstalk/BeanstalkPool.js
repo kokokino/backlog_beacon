@@ -38,29 +38,6 @@ export class ObjectPool {
     this.avail = [];
   }
 
-  async disposeAsync(label = 'ObjectPool') {
-    const CHUNK_SIZE = 10;
-    const t0 = performance.now();
-    console.log(`[dispose:${label}] START — pool size: ${this.pool.length}, available: ${this.avail.length}`);
-
-    for (let i = 0; i < this.pool.length; i += CHUNK_SIZE) {
-      const chunkStart = performance.now();
-      const chunk = this.pool.slice(i, i + CHUNK_SIZE);
-      chunk.forEach(obj => {
-        if (obj && typeof obj.dispose === 'function') {
-          obj.dispose();
-        }
-      });
-      const chunkMs = performance.now() - chunkStart;
-      console.log(`[dispose:${label}] chunk ${i}-${i + chunk.length - 1} disposed in ${chunkMs.toFixed(1)}ms`);
-      // Yield a full frame to browser
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    }
-
-    this.pool = [];
-    this.avail = [];
-    console.log(`[dispose:${label}] DONE — total ${(performance.now() - t0).toFixed(1)}ms`);
-  }
 }
 
 /**
@@ -508,54 +485,6 @@ export class TextureCache {
     }
   }
 
-  async disposeAsync() {
-    const t0 = performance.now();
-    const entries = Array.from(this.entries.values());
-
-    // Count entries by state
-    const stateCounts = { loaded: 0, loading: 0, pending: 0, failed: 0 };
-    let withTexture = 0;
-    for (const entry of entries) {
-      stateCounts[entry.state] = (stateCounts[entry.state] || 0) + 1;
-      if (entry.texture) {
-        withTexture++;
-      }
-    }
-    console.log(`[dispose:textureCache] START — entries: ${entries.length}, loaded: ${stateCounts.loaded}, loading: ${stateCounts.loading}, pending: ${stateCounts.pending}, failed: ${stateCounts.failed}, withTexture: ${withTexture}`);
-
-    const CHUNK_SIZE = 10;
-    for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-      const chunkStart = performance.now();
-      const chunk = entries.slice(i, i + CHUNK_SIZE);
-      chunk.forEach(entry => {
-        if (entry.timeoutId) {
-          clearTimeout(entry.timeoutId);
-        }
-        if (entry.texture) {
-          entry.texture.dispose();
-        }
-      });
-      const chunkMs = performance.now() - chunkStart;
-      console.log(`[dispose:textureCache] chunk ${i}-${i + chunk.length - 1} disposed in ${chunkMs.toFixed(1)}ms`);
-      // Yield a full frame to browser
-      await new Promise(resolve => requestAnimationFrame(resolve));
-    }
-
-    this.entries.clear();
-    this.accessOrder = [];
-
-    // Dispose placeholders
-    if (this.loadingPlaceholder) {
-      this.loadingPlaceholder.dispose();
-      this.loadingPlaceholder = null;
-    }
-    if (this.errorPlaceholder) {
-      this.errorPlaceholder.dispose();
-      this.errorPlaceholder = null;
-    }
-
-    console.log(`[dispose:textureCache] DONE — total ${(performance.now() - t0).toFixed(1)}ms`);
-  }
 }
 
 /**
