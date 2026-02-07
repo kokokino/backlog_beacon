@@ -159,7 +159,7 @@ export const GameCard = {
         
         collectionItem && onRemoveItem && m('button.outline.contrast', {
           onclick() {
-            if (confirm('Remove this game from your collection?')) {
+            if (confirm(`Remove "${displayName}" from your collection?`)) {
               onRemoveItem(collectionItem._id);
             }
           }
