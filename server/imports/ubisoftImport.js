@@ -400,7 +400,7 @@ async function fetchUbisoftLibrary(ticket, sessionId) {
 
   const games = Array.from(mergedById.values());
   const demuxCount = games.length - graphqlOnlyCount;
-  console.log(`[Ubisoft] Fetched ${games.length} games (${demuxCount} from Demux, ${graphqlGames.length} from GraphQL)`);
+  // console.log(`[Ubisoft] Fetched ${games.length} games (${demuxCount} from Demux, ${graphqlGames.length} from GraphQL)`);
 
   return games;
 }
