@@ -18,6 +18,7 @@ import { importUbisoftLibrary, importUbisoftLibraryWith2FA } from '../imports/ub
 import { importXboxLibrary } from '../imports/xboxImport.js';
 import { importPsnLibrary } from '../imports/psnImport.js';
 import { importBattlenetLibrary } from '../imports/battlenetImport.js';
+import { importLegacyGamesLibrary } from '../imports/legacygamesImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -703,5 +704,32 @@ Meteor.methods({
     };
 
     return importUbisoftLibraryWith2FA(this.userId, twoFactorTicket.trim(), code.trim(), importOptions);
+  },
+
+  // Import Legacy Games library using email/password
+  async 'import.legacygames'(email, password, options) {
+    check(email, String);
+    check(password, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!email.trim() || !password) {
+      throw new Meteor.Error('invalid-input', 'Email and password are required');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importLegacyGamesLibrary(this.userId, email.trim(), password, importOptions);
   }
 });

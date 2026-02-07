@@ -12,6 +12,7 @@ import { UbisoftForm } from './storefronts/UbisoftForm.js';
 import { XboxForm } from './storefronts/XboxForm.js';
 import { PsnForm } from './storefronts/PsnForm.js';
 import { BattlenetForm } from './storefronts/BattlenetForm.js';
+import { LegacyGamesForm } from './storefronts/LegacyGamesForm.js';
 
 const STOREFRONT_FORMS = {
   steam: SteamForm,
@@ -23,7 +24,8 @@ const STOREFRONT_FORMS = {
   ubisoft: UbisoftForm,
   xbox: XboxForm,
   psn: PsnForm,
-  battlenet: BattlenetForm
+  battlenet: BattlenetForm,
+  legacygames: LegacyGamesForm
 };
 
 export const StorefrontTab = {
@@ -76,7 +78,8 @@ export const StorefrontTab = {
           m('option', { value: 'ubisoft' }, 'Ubisoft Connect'),
           m('option', { value: 'xbox' }, 'Xbox / Microsoft Store'),
           m('option', { value: 'psn' }, 'PlayStation'),
-          m('option', { value: 'battlenet' }, 'Battle.net')
+          m('option', { value: 'battlenet' }, 'Battle.net'),
+          m('option', { value: 'legacygames' }, 'Legacy Games')
         ])
       ]),
 

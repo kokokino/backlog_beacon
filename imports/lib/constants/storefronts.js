@@ -16,6 +16,7 @@ export const DEFAULT_STOREFRONTS = [
   { storefrontId: 'origin', name: 'Origin (EA)', category: 'pc' },
   { storefrontId: 'ubisoft', name: 'Ubisoft Connect', category: 'pc' },
   { storefrontId: 'battlenet', name: 'Battle.net', category: 'pc' },
+  { storefrontId: 'legacygames', name: 'Legacy Games', category: 'pc' },
   { storefrontId: 'microsoft', name: 'Microsoft Store', category: 'pc' },
   { storefrontId: 'amazon', name: 'Amazon Games', category: 'pc' },
   { storefrontId: 'luna', name: 'Luna', category: 'pc' },
@@ -171,8 +172,8 @@ export function findStorefrontByName(name) {
     'retail': 'physical',
     'disc': 'physical',
     'box': 'physical',
-    'legacy games': 'other',
-    'legacygames': 'other',
+    'legacy games': 'legacygames',
+    'legacygames': 'legacygames',
     'n/a': 'other'
   };
   
