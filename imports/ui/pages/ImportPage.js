@@ -95,6 +95,9 @@ const ImportContent = {
     this.ubisoftTwoFactorCode = '';
     this.ubisoftNeeds2FA = false;
 
+    // Xbox-specific state
+    this.xboxAuthCode = null; // In-memory only, never persisted
+
     // EA-specific state
     this.eaBearerToken = null; // In-memory only, never persisted
 
@@ -420,6 +423,8 @@ const ImportContent = {
     this.ubisoftTwoFactorTicket = null;
     this.ubisoftTwoFactorCode = '';
     this.ubisoftNeeds2FA = false;
+    // Reset Xbox state
+    this.xboxAuthCode = null;
     // Reset EA state
     this.eaBearerToken = null;
     this.storefrontPreview = null;
@@ -1320,7 +1325,8 @@ const ImportContent = {
           m('option', { value: 'amazon' }, 'Amazon Games'),
           m('option', { value: 'oculus' }, 'Oculus / Meta Quest'),
           m('option', { value: 'ea' }, 'EA App'),
-          m('option', { value: 'ubisoft' }, 'Ubisoft Connect')
+          m('option', { value: 'ubisoft' }, 'Ubisoft Connect'),
+          m('option', { value: 'xbox' }, 'Xbox / Microsoft Store')
         ])
       ]),
 
@@ -1344,6 +1350,9 @@ const ImportContent = {
 
       // Ubisoft form
       this.storefrontType === 'ubisoft' && this.renderUbisoftForm(),
+
+      // Xbox form
+      this.storefrontType === 'xbox' && this.renderXboxForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -2313,6 +2322,160 @@ const ImportContent = {
         disabled: !hasBearerToken || this.storefrontImporting,
         onclick: () => this.importEa()
       }, this.storefrontImporting ? 'Importing...' : 'Import from EA App')
+    ]);
+  },
+
+  // Xbox-specific methods
+  updateXboxAuthCode(value) {
+    const trimmed = value.trim();
+    // Accept either a raw code or a full callback URL containing ?code=
+    if (trimmed.includes('code=')) {
+      try {
+        const url = new URL(trimmed);
+        const code = url.searchParams.get('code');
+        this.xboxAuthCode = code || trimmed;
+      } catch (error) {
+        // Not a valid URL, use as-is
+        this.xboxAuthCode = trimmed || null;
+      }
+    } else {
+      this.xboxAuthCode = trimmed || null;
+    }
+  },
+
+  clearXboxAuth() {
+    this.xboxAuthCode = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importXbox() {
+    if (!this.xboxAuthCode) {
+      this.storefrontError = 'Please enter your Microsoft authorization code.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.xbox', this.xboxAuthCode, {
+        updateExisting: this.storefrontOptions.updateExisting,
+        importPlaytime: this.storefrontOptions.importPlaytime
+      });
+      // Clear auth code after successful import (security best practice)
+      this.xboxAuthCode = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderXboxForm() {
+    const hasAuthCode = !!this.xboxAuthCode;
+
+    return m('div.xbox-form', [
+      // Instructions
+      m('div.xbox-instructions', { style: 'margin-bottom: 1rem;' }, [
+        m('h4', 'How to get your authorization code:'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', [
+            'Click this link to open Microsoft login: ',
+            m('a', {
+              href: 'https://login.live.com/oauth20_authorize.srf?client_id=388ea51c-0b25-4029-aae2-17df49d23905&response_type=code&approval_prompt=auto&scope=Xboxlive.signin+Xboxlive.offline_access&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fauth%2Fcallback',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'Get Authorization Code')
+          ]),
+          m('li', 'Log in to your Microsoft account if prompted'),
+          m('li', [
+            'After login, the page will show a "can\'t reach this page" error — ',
+            m('strong', 'this is expected')
+          ]),
+          m('li', [
+            'Copy the ',
+            m('strong', 'entire URL'),
+            ' from the address bar and paste it below (the code will be extracted automatically)'
+          ])
+        ])
+      ]),
+
+      // Auth code input
+      m('div.form-group', [
+        m('label', { for: 'xbox-auth-code' }, 'Authorization Code'),
+        m('input', {
+          type: 'text',
+          id: 'xbox-auth-code',
+          placeholder: 'Paste the full URL or authorization code here...',
+          value: this.xboxAuthCode || '',
+          disabled: this.storefrontImporting,
+          oninput: (event) => this.updateXboxAuthCode(event.target.value)
+        }),
+        m('small', 'You can paste the full URL — the code will be extracted automatically.')
+      ]),
+
+      hasAuthCode && m('div.auth-status', { style: 'margin-bottom: 1rem;' }, [
+        m('span', { style: 'color: var(--ins-color);' }, 'Authorization code provided'),
+        ' ',
+        m('button.outline.secondary', {
+          style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+          onclick: () => this.clearXboxAuth()
+        }, 'Clear')
+      ]),
+
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your authorization code is only used once to fetch your game library and is never stored. All tokens are discarded after import.'
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ]),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importPlaytime,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.importPlaytime = event.target.checked;
+            }
+          }),
+          ' Import playtime hours'
+        ])
+      ]),
+
+      // Import button (no preview step - auth codes are single-use)
+      !this.storefrontResult && m('button', {
+        disabled: !hasAuthCode || this.storefrontImporting,
+        onclick: () => this.importXbox()
+      }, this.storefrontImporting ? 'Importing...' : 'Import from Xbox')
     ]);
   },
 

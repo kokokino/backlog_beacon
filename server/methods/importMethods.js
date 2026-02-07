@@ -15,6 +15,7 @@ import { importAmazonLibrary } from '../imports/amazonImport.js';
 import { importOculusLibrary } from '../imports/oculusImport.js';
 import { importEaLibrary } from '../imports/eaImport.js';
 import { importUbisoftLibrary, importUbisoftLibraryWith2FA } from '../imports/ubisoftImport.js';
+import { importXboxLibrary } from '../imports/xboxImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -555,6 +556,35 @@ Meteor.methods({
     };
 
     return importEaLibrary(this.userId, bearerToken.trim(), importOptions);
+  },
+
+  // Import Xbox / Microsoft Store library using authorization code
+  async 'import.xbox'(authCode, options) {
+    check(authCode, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean),
+      importPlaytime: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!authCode.trim()) {
+      throw new Meteor.Error('invalid-input', 'Authorization code is required');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false,
+      importPlaytime: options?.importPlaytime !== false
+    };
+
+    return importXboxLibrary(this.userId, authCode.trim(), importOptions);
   },
 
   // Import Ubisoft Connect library using email/password
