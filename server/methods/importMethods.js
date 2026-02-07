@@ -16,6 +16,7 @@ import { importOculusLibrary } from '../imports/oculusImport.js';
 import { importEaLibrary } from '../imports/eaImport.js';
 import { importUbisoftLibrary, importUbisoftLibraryWith2FA } from '../imports/ubisoftImport.js';
 import { importXboxLibrary } from '../imports/xboxImport.js';
+import { importPsnLibrary } from '../imports/psnImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -585,6 +586,35 @@ Meteor.methods({
     };
 
     return importXboxLibrary(this.userId, authCode.trim(), importOptions);
+  },
+
+  // Import PlayStation library using NPSSO token
+  async 'import.psn'(npssoToken, options) {
+    check(npssoToken, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean),
+      importPlaytime: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!npssoToken.trim()) {
+      throw new Meteor.Error('invalid-input', 'NPSSO token is required');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false,
+      importPlaytime: options?.importPlaytime !== false
+    };
+
+    return importPsnLibrary(this.userId, npssoToken.trim(), importOptions);
   },
 
   // Import Ubisoft Connect library using email/password

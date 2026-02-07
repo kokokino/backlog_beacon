@@ -98,6 +98,9 @@ const ImportContent = {
     // Xbox-specific state
     this.xboxAuthCode = null; // In-memory only, never persisted
 
+    // PSN-specific state
+    this.psnNpssoToken = null; // In-memory only, never persisted
+
     // EA-specific state
     this.eaBearerToken = null; // In-memory only, never persisted
 
@@ -425,6 +428,8 @@ const ImportContent = {
     this.ubisoftNeeds2FA = false;
     // Reset Xbox state
     this.xboxAuthCode = null;
+    // Reset PSN state
+    this.psnNpssoToken = null;
     // Reset EA state
     this.eaBearerToken = null;
     this.storefrontPreview = null;
@@ -1326,7 +1331,8 @@ const ImportContent = {
           m('option', { value: 'oculus' }, 'Oculus / Meta Quest'),
           m('option', { value: 'ea' }, 'EA App'),
           m('option', { value: 'ubisoft' }, 'Ubisoft Connect'),
-          m('option', { value: 'xbox' }, 'Xbox / Microsoft Store')
+          m('option', { value: 'xbox' }, 'Xbox / Microsoft Store'),
+          m('option', { value: 'psn' }, 'PlayStation')
         ])
       ]),
 
@@ -1353,6 +1359,9 @@ const ImportContent = {
 
       // Xbox form
       this.storefrontType === 'xbox' && this.renderXboxForm(),
+
+      // PlayStation form
+      this.storefrontType === 'psn' && this.renderPsnForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -2482,6 +2491,157 @@ const ImportContent = {
         disabled: !hasAuthCode || this.storefrontImporting,
         onclick: () => this.importXbox()
       }, this.storefrontImporting ? 'Importing...' : 'Import from Xbox')
+    ]);
+  },
+
+  // PSN-specific methods
+  updatePsnToken(value) {
+    this.psnNpssoToken = value.trim() || null;
+  },
+
+  clearPsnAuth() {
+    this.psnNpssoToken = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importPsn() {
+    if (!this.psnNpssoToken) {
+      this.storefrontError = 'Please enter your NPSSO token.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.psn', this.psnNpssoToken, {
+        updateExisting: this.storefrontOptions.updateExisting,
+        importPlaytime: this.storefrontOptions.importPlaytime
+      });
+      // Clear token after successful import (security best practice)
+      this.psnNpssoToken = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderPsnForm() {
+    const hasToken = !!this.psnNpssoToken;
+
+    return m('div.psn-form', [
+      // Instructions
+      m('div.psn-instructions', { style: 'margin-bottom: 1rem;' }, [
+        m('h4', 'How to get your NPSSO token:'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', [
+            'Log in to your PlayStation account at ',
+            m('a', {
+              href: 'https://store.playstation.com',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'store.playstation.com')
+          ]),
+          m('li', [
+            'Then open ',
+            m('a', {
+              href: 'https://ca.account.sony.com/api/v1/ssocookie',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'this link'),
+            ' — it will show JSON with an ',
+            m('code', 'npsso'),
+            ' field. Copy that value (a 64-character string)'
+          ])
+        ]),
+        m('small', { style: 'color: var(--muted-color);' },
+          'If the link shows an error, make sure you are logged in at store.playstation.com first.'
+        )
+      ]),
+
+      // Limitation notice
+      m('div.limitation-notice', { style: 'margin-bottom: 1rem; padding: 0.75rem; background: var(--card-sectionning-background-color); border-radius: var(--border-radius);' }, [
+        m('strong', 'Note: '),
+        'PS3 and PS Vita games are included if you have earned at least one trophy. PS4 and PS5 games are included even if never played.'
+      ]),
+
+      // Token input
+      m('div.form-group', [
+        m('label', { for: 'psn-token' }, 'NPSSO Token'),
+        m('input', {
+          type: 'text',
+          id: 'psn-token',
+          placeholder: 'Paste your npsso token here...',
+          value: this.psnNpssoToken || '',
+          disabled: this.storefrontImporting,
+          oninput: (event) => this.updatePsnToken(event.target.value)
+        }),
+        m('small', 'The token is a 64-character string from the JSON response.')
+      ]),
+
+      hasToken && m('div.auth-status', { style: 'margin-bottom: 1rem;' }, [
+        m('span', { style: 'color: var(--ins-color);' }, 'NPSSO token provided'),
+        ' ',
+        m('button.outline.secondary', {
+          style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+          onclick: () => this.clearPsnAuth()
+        }, 'Clear')
+      ]),
+
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your NPSSO token is only used once to fetch your game library and is never stored. It will be cleared after import.'
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ]),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importPlaytime,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.importPlaytime = event.target.checked;
+            }
+          }),
+          ' Import playtime hours'
+        ])
+      ]),
+
+      // Import button (no preview step - token is single-use)
+      !this.storefrontResult && m('button', {
+        disabled: !hasToken || this.storefrontImporting,
+        onclick: () => this.importPsn()
+      }, this.storefrontImporting ? 'Importing...' : 'Import from PlayStation')
     ]);
   },
 
