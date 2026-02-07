@@ -157,33 +157,24 @@ function buildXblAuthHeader(uhs, xstsToken) {
   return `XBL3.0 x=${uhs};${xstsToken}`;
 }
 
-// Fetch title history (all games the user has played/owned)
+// Fetch title history (games the user has played)
 async function fetchTitleHistory(xuid, xstsToken, uhs) {
-  const url = `${XBOX_TITLEHUB_URL}/users/xuid(${xuid})/titles/titlehistory/decoration/detail`;
+  const url = `${XBOX_TITLEHUB_URL}/users/xuid(${xuid})/titles/titlehistory/decoration/detail?maxItems=1000`;
 
   const response = await fetchWithRetry(url, {
     headers: {
       'Authorization': buildXblAuthHeader(uhs, xstsToken),
       'Accept': 'application/json',
       'x-xbl-contract-version': '2',
-      'Accept-Language': 'en-US'
+      'Accept-Language': 'en-US',
+      'x-xbl-client-name': 'XboxApp',
+      'x-xbl-client-type': 'UWA',
+      'x-xbl-client-version': '39.39.22001.0'
     }
   });
 
   const data = await response.json();
-
-  console.log(`Xbox titleHistory response keys: ${Object.keys(data).join(', ')}`);
   const titles = data.titles || [];
-  console.log(`Xbox titleHistory: ${titles.length} total titles`);
-  if (titles.length > 0) {
-    const sample = titles[0];
-    console.log(`Xbox sample title: ${JSON.stringify({ name: sample.name, type: sample.type, titleId: sample.titleId, devices: sample.devices, modernTitleId: sample.modernTitleId }, null, 2)}`);
-    const types = [...new Set(titles.map(t => t.type))];
-    console.log(`Xbox title types found: ${types.join(', ')}`);
-  } else if (data.xuid || data.titles === undefined) {
-    // Log full response shape if titles is missing
-    console.log(`Xbox titleHistory unexpected response: ${JSON.stringify(data).substring(0, 500)}`);
-  }
 
   return titles;
 }
@@ -364,9 +355,7 @@ export async function importXboxLibrary(userId, authCode, options = {}) {
   const allTitles = await fetchTitleHistory(xuid, xstsToken, uhs);
 
   // Filter to games only (exclude apps, DLC, etc.)
-  console.log(`Xbox allTitles count: ${allTitles.length}`);
   const gameTitles = allTitles.filter(title => title.type === 'Game');
-  console.log(`Xbox gameTitles count after type=Game filter: ${gameTitles.length}`);
 
   // Deduplicate by titleId
   const seen = new Set();

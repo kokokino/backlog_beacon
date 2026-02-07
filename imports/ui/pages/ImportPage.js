@@ -2415,6 +2415,12 @@ const ImportContent = {
         ])
       ]),
 
+      // Limitation notice
+      m('div.limitation-notice', { style: 'margin-bottom: 1rem; padding: 0.75rem; background: var(--card-sectionning-background-color); border-radius: var(--border-radius);' }, [
+        m('strong', 'Note: '),
+        'Xbox only reports games you have played or installed at least once. Purchased games that have never been launched will not appear.'
+      ]),
+
       // Auth code input
       m('div.form-group', [
         m('label', { for: 'xbox-auth-code' }, 'Authorization Code'),
