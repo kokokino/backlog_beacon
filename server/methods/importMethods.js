@@ -268,7 +268,7 @@ Meteor.methods({
               });
 
               results.updated++;
-              results.games.push({ name: game.name, action: 'updated' });
+              results.games.push({ name: game.name, matchedName: cachedGame?.title || null, action: 'updated' });
             } else {
               results.skipped++;
               results.games.push({ name: game.name, action: 'skipped', reason: 'Already in collection' });
@@ -305,7 +305,7 @@ Meteor.methods({
           });
 
           results.imported++;
-          results.games.push({ name: game.name, action: 'imported' });
+          results.games.push({ name: game.name, matchedName: cachedGame?.title || null, action: 'imported' });
         } catch (error) {
           results.skipped++;
           results.errors.push({

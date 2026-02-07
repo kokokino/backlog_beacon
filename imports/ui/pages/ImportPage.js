@@ -843,6 +843,21 @@ const ImportContent = {
             `, Skipped: ${this.darkadiaResult.skipped}`
           ])
         ]),
+        this.darkadiaResult.games.filter(g => g.action === 'inserted').length > 0 &&
+          m('div.import-imported', [
+            m('details', [
+              m('summary', `${this.darkadiaResult.games.filter(g => g.action === 'inserted').length} games imported`),
+              m('ul', [
+                this.darkadiaResult.games
+                  .filter(g => g.action === 'inserted')
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
+              ])
+            ])
+          ]),
         this.darkadiaResult.games.filter(g => g.action === 'updated').length > 0 &&
           m('div.import-updated', [
             m('details', { open: true }, [
@@ -988,7 +1003,11 @@ const ImportContent = {
               m('ul', [
                 this.backlogResult.games
                   .filter(g => g.action === 'imported')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),
@@ -1000,7 +1019,11 @@ const ImportContent = {
               m('ul', [
                 this.backlogResult.games
                   .filter(g => g.action === 'updated')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),
@@ -1127,7 +1150,11 @@ const ImportContent = {
               m('ul', [
                 this.simpleResult.games
                   .filter(g => g.action === 'imported')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),
@@ -1139,7 +1166,11 @@ const ImportContent = {
               m('ul', [
                 this.simpleResult.games
                   .filter(g => g.action === 'updated')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),
@@ -1378,7 +1409,11 @@ const ImportContent = {
               m('ul', [
                 this.storefrontResult.games
                   .filter(g => g.action === 'imported')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),
@@ -1390,7 +1425,11 @@ const ImportContent = {
               m('ul', [
                 this.storefrontResult.games
                   .filter(g => g.action === 'updated')
-                  .map((game, index) => m('li', { key: index }, game.name))
+                  .map((game, index) => m('li', { key: index },
+                    game.matchedName && game.matchedName !== game.name
+                      ? `${game.name} → ${game.matchedName}`
+                      : game.name
+                  ))
               ])
             ])
           ]),

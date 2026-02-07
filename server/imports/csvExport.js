@@ -225,10 +225,10 @@ export async function importBacklogBeaconCSV(userId, csvContent, options = {}) {
         if (result.success) {
           if (result.action === 'updated') {
             results.updated++;
-            results.games.push({ name: row.Name, action: 'updated' });
+            results.games.push({ name: row.Name, matchedName: result.matchedName, action: 'updated' });
           } else {
             results.imported++;
-            results.games.push({ name: row.Name, action: 'imported' });
+            results.games.push({ name: row.Name, matchedName: result.matchedName, action: 'imported' });
           }
         } else {
           results.skipped++;
@@ -361,11 +361,11 @@ async function importBacklogBeaconRow(userId, row, options = {}) {
         createdAt: existing.createdAt
       }
     });
-    return { success: true, action: 'updated' };
+    return { success: true, action: 'updated', matchedName: game?.title || null };
   }
 
   await CollectionItems.insertAsync(collectionItem);
-  return { success: true, action: 'inserted' };
+  return { success: true, action: 'inserted', matchedName: game?.title || null };
 }
 
 // Preview Backlog Beacon CSV import without actually importing

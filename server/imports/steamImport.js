@@ -356,7 +356,7 @@ export async function importSteamLibrary(userId, steamUsername, options = {}) {
             await CollectionItems.updateAsync(existing._id, { $set: updateFields });
 
             results.updated++;
-            results.games.push({ name: gameName, action: 'updated' });
+            results.games.push({ name: gameName, matchedName: cachedGame?.title || null, action: 'updated' });
           } else {
             results.skipped++;
             results.games.push({ name: gameName, action: 'skipped', reason: 'Already in collection' });
@@ -397,7 +397,7 @@ export async function importSteamLibrary(userId, steamUsername, options = {}) {
         await CollectionItems.insertAsync(collectionItem);
 
         results.imported++;
-        results.games.push({ name: gameName, action: 'imported' });
+        results.games.push({ name: gameName, matchedName: cachedGame?.title || null, action: 'imported' });
       } catch (error) {
         results.skipped++;
         results.errors.push({
