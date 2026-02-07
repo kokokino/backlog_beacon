@@ -11,6 +11,7 @@ import { EaForm } from './storefronts/EaForm.js';
 import { UbisoftForm } from './storefronts/UbisoftForm.js';
 import { XboxForm } from './storefronts/XboxForm.js';
 import { PsnForm } from './storefronts/PsnForm.js';
+import { BattlenetForm } from './storefronts/BattlenetForm.js';
 
 const STOREFRONT_FORMS = {
   steam: SteamForm,
@@ -21,7 +22,8 @@ const STOREFRONT_FORMS = {
   ea: EaForm,
   ubisoft: UbisoftForm,
   xbox: XboxForm,
-  psn: PsnForm
+  psn: PsnForm,
+  battlenet: BattlenetForm
 };
 
 export const StorefrontTab = {
@@ -73,7 +75,8 @@ export const StorefrontTab = {
           m('option', { value: 'ea' }, 'EA App'),
           m('option', { value: 'ubisoft' }, 'Ubisoft Connect'),
           m('option', { value: 'xbox' }, 'Xbox / Microsoft Store'),
-          m('option', { value: 'psn' }, 'PlayStation')
+          m('option', { value: 'psn' }, 'PlayStation'),
+          m('option', { value: 'battlenet' }, 'Battle.net')
         ])
       ]),
 

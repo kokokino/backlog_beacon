@@ -17,6 +17,7 @@ import { importEaLibrary } from '../imports/eaImport.js';
 import { importUbisoftLibrary, importUbisoftLibraryWith2FA } from '../imports/ubisoftImport.js';
 import { importXboxLibrary } from '../imports/xboxImport.js';
 import { importPsnLibrary } from '../imports/psnImport.js';
+import { importBattlenetLibrary } from '../imports/battlenetImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -615,6 +616,37 @@ Meteor.methods({
     };
 
     return importPsnLibrary(this.userId, npssoToken.trim(), importOptions);
+  },
+
+  // Import Battle.net library using pasted JSON
+  async 'import.battlenet'(gamesJson, classicGamesJson, options) {
+    check(gamesJson, String);
+    check(classicGamesJson, Match.Maybe(String));
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!gamesJson.trim()) {
+      throw new Meteor.Error('invalid-input', 'Game library JSON is required');
+    }
+
+    if (gamesJson.length > 5 * 1024 * 1024) {
+      throw new Meteor.Error('file-too-large', 'JSON data is too large (max 5MB)');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importBattlenetLibrary(this.userId, gamesJson.trim(), classicGamesJson?.trim() || null, importOptions);
   },
 
   // Import Ubisoft Connect library using email/password
