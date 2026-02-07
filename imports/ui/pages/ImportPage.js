@@ -88,6 +88,13 @@ const ImportContent = {
     this.oculusAccessToken = null; // In-memory only, never persisted
     this.oculusPlatform = 'quest'; // 'quest', 'rift', or 'go'
 
+    // Ubisoft-specific state
+    this.ubisoftEmail = '';
+    this.ubisoftPassword = '';
+    this.ubisoftTwoFactorTicket = null; // In-memory only, stored when 2FA is needed
+    this.ubisoftTwoFactorCode = '';
+    this.ubisoftNeeds2FA = false;
+
     // Export state
     this.exporting = false;
     this.exportError = null;
@@ -404,6 +411,12 @@ const ImportContent = {
     // Reset Oculus state
     this.oculusAccessToken = null;
     this.oculusPlatform = 'quest';
+    // Reset Ubisoft state
+    this.ubisoftEmail = '';
+    this.ubisoftPassword = '';
+    this.ubisoftTwoFactorTicket = null;
+    this.ubisoftTwoFactorCode = '';
+    this.ubisoftNeeds2FA = false;
     this.storefrontPreview = null;
     this.storefrontResult = null;
     this.storefrontError = null;
@@ -1269,7 +1282,8 @@ const ImportContent = {
           m('option', { value: 'gog' }, 'GOG'),
           m('option', { value: 'epic' }, 'Epic Games Store'),
           m('option', { value: 'amazon' }, 'Amazon Games'),
-          m('option', { value: 'oculus' }, 'Oculus / Meta Quest')
+          m('option', { value: 'oculus' }, 'Oculus / Meta Quest'),
+          m('option', { value: 'ubisoft' }, 'Ubisoft Connect')
         ])
       ]),
 
@@ -1287,6 +1301,9 @@ const ImportContent = {
 
       // Oculus form
       this.storefrontType === 'oculus' && this.renderOculusForm(),
+
+      // Ubisoft form
+      this.storefrontType === 'ubisoft' && this.renderUbisoftForm(),
 
       // Progress indicator
       (this.storefrontImporting || isProcessing) && progress && m('div.import-progress', [
@@ -2104,6 +2121,207 @@ const ImportContent = {
         disabled: !hasAccessToken || this.storefrontImporting,
         onclick: () => this.importOculus()
       }, this.storefrontImporting ? 'Importing...' : 'Import from Oculus')
+    ]);
+  },
+
+  // Ubisoft-specific methods
+  updateUbisoftEmail(value) {
+    this.ubisoftEmail = value;
+  },
+
+  updateUbisoftPassword(value) {
+    this.ubisoftPassword = value;
+  },
+
+  updateUbisoftTwoFactorCode(value) {
+    this.ubisoftTwoFactorCode = value;
+  },
+
+  clearUbisoftAuth() {
+    this.ubisoftEmail = '';
+    this.ubisoftPassword = '';
+    this.ubisoftTwoFactorTicket = null;
+    this.ubisoftTwoFactorCode = '';
+    this.ubisoftNeeds2FA = false;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importUbisoft() {
+    if (!this.ubisoftEmail.trim() || !this.ubisoftPassword) {
+      this.storefrontError = 'Email and password are required.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.ubisoft', this.ubisoftEmail, this.ubisoftPassword, {
+        updateExisting: this.storefrontOptions.updateExisting
+      });
+      // Clear credentials after successful import
+      this.ubisoftEmail = '';
+      this.ubisoftPassword = '';
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      if (error.error === 'auth-2fa-required') {
+        // 2FA required - store ticket and show 2FA input
+        this.ubisoftTwoFactorTicket = error.details;
+        this.ubisoftNeeds2FA = true;
+        // Clear password from memory
+        this.ubisoftPassword = '';
+      } else {
+        this.storefrontError = error.reason || error.message || 'Import failed';
+      }
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  async importUbisoft2FA() {
+    if (!this.ubisoftTwoFactorTicket || !this.ubisoftTwoFactorCode.trim()) {
+      this.storefrontError = 'Please enter the verification code.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.ubisoft2fa', this.ubisoftTwoFactorTicket, this.ubisoftTwoFactorCode, {
+        updateExisting: this.storefrontOptions.updateExisting
+      });
+      // Clear all Ubisoft state after successful import
+      this.ubisoftEmail = '';
+      this.ubisoftPassword = '';
+      this.ubisoftTwoFactorTicket = null;
+      this.ubisoftTwoFactorCode = '';
+      this.ubisoftNeeds2FA = false;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderUbisoftForm() {
+    const hasCredentials = this.ubisoftEmail.trim().length > 0 && this.ubisoftPassword.length > 0;
+    const hasCode = this.ubisoftTwoFactorCode.trim().length > 0;
+
+    return m('div.ubisoft-form', [
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your credentials are sent directly to Ubisoft for authentication and are never stored. They are discarded immediately after use.'
+      ]),
+
+      // Email input
+      m('div.form-group', [
+        m('label', { for: 'ubisoft-email' }, 'Ubisoft Account Email'),
+        m('input', {
+          type: 'email',
+          id: 'ubisoft-email',
+          placeholder: 'your@email.com',
+          value: this.ubisoftEmail,
+          disabled: this.storefrontImporting || this.ubisoftNeeds2FA,
+          autocomplete: 'off',
+          oninput: (event) => this.updateUbisoftEmail(event.target.value)
+        })
+      ]),
+
+      // Password input
+      m('div.form-group', [
+        m('label', { for: 'ubisoft-password' }, 'Password'),
+        m('input', {
+          type: 'password',
+          id: 'ubisoft-password',
+          placeholder: 'Enter your password',
+          value: this.ubisoftPassword,
+          disabled: this.storefrontImporting || this.ubisoftNeeds2FA,
+          autocomplete: 'off',
+          oninput: (event) => this.updateUbisoftPassword(event.target.value)
+        })
+      ]),
+
+      // 2FA code input (only shown when 2FA is required)
+      this.ubisoftNeeds2FA && m('div.ubisoft-2fa', [
+        m('div.auth-status', { style: 'margin-bottom: 1rem; color: var(--ins-color);' },
+          'Two-factor authentication required. Enter the code from your authenticator app or SMS.'
+        ),
+        m('div.form-group', [
+          m('label', { for: 'ubisoft-2fa-code' }, 'Verification Code'),
+          m('input', {
+            type: 'text',
+            id: 'ubisoft-2fa-code',
+            placeholder: 'Enter 6-digit code',
+            value: this.ubisoftTwoFactorCode,
+            disabled: this.storefrontImporting,
+            autocomplete: 'off',
+            oninput: (event) => this.updateUbisoftTwoFactorCode(event.target.value)
+          })
+        ])
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ])
+      ]),
+
+      // Action buttons
+      !this.storefrontResult && !this.ubisoftNeeds2FA && m('button', {
+        disabled: !hasCredentials || this.storefrontImporting,
+        onclick: () => this.importUbisoft()
+      }, this.storefrontImporting ? 'Authenticating...' : 'Import from Ubisoft Connect'),
+
+      !this.storefrontResult && this.ubisoftNeeds2FA && m('div.ubisoft-2fa-actions', [
+        m('button', {
+          disabled: !hasCode || this.storefrontImporting,
+          onclick: () => this.importUbisoft2FA()
+        }, this.storefrontImporting ? 'Verifying...' : 'Verify & Import'),
+        ' ',
+        m('button.outline.secondary', {
+          disabled: this.storefrontImporting,
+          onclick: () => this.clearUbisoftAuth()
+        }, 'Cancel')
+      ])
     ]);
   },
 
