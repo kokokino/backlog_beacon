@@ -95,6 +95,9 @@ const ImportContent = {
     this.ubisoftTwoFactorCode = '';
     this.ubisoftNeeds2FA = false;
 
+    // EA-specific state
+    this.eaBearerToken = null; // In-memory only, never persisted
+
     // Export state
     this.exporting = false;
     this.exportError = null;
@@ -417,6 +420,8 @@ const ImportContent = {
     this.ubisoftTwoFactorTicket = null;
     this.ubisoftTwoFactorCode = '';
     this.ubisoftNeeds2FA = false;
+    // Reset EA state
+    this.eaBearerToken = null;
     this.storefrontPreview = null;
     this.storefrontResult = null;
     this.storefrontError = null;
@@ -1314,6 +1319,7 @@ const ImportContent = {
           m('option', { value: 'epic' }, 'Epic Games Store'),
           m('option', { value: 'amazon' }, 'Amazon Games'),
           m('option', { value: 'oculus' }, 'Oculus / Meta Quest'),
+          m('option', { value: 'ea' }, 'EA App'),
           m('option', { value: 'ubisoft' }, 'Ubisoft Connect')
         ])
       ]),
@@ -1332,6 +1338,9 @@ const ImportContent = {
 
       // Oculus form
       this.storefrontType === 'oculus' && this.renderOculusForm(),
+
+      // EA form
+      this.storefrontType === 'ea' && this.renderEaForm(),
 
       // Ubisoft form
       this.storefrontType === 'ubisoft' && this.renderUbisoftForm(),
@@ -2160,6 +2169,150 @@ const ImportContent = {
         disabled: !hasAccessToken || this.storefrontImporting,
         onclick: () => this.importOculus()
       }, this.storefrontImporting ? 'Importing...' : 'Import from Oculus')
+    ]);
+  },
+
+  // EA-specific methods
+  updateEaBearerToken(value) {
+    this.eaBearerToken = value.trim() || null;
+  },
+
+  clearEaAuth() {
+    this.eaBearerToken = null;
+    this.storefrontResult = null;
+    this.storefrontError = null;
+    m.redraw();
+  },
+
+  async importEa() {
+    if (!this.eaBearerToken) {
+      this.storefrontError = 'Please enter your EA bearer token.';
+      m.redraw();
+      return;
+    }
+
+    this.storefrontImporting = true;
+    this.storefrontError = null;
+    this.storefrontResult = null;
+    m.redraw();
+
+    try {
+      this.storefrontResult = await Meteor.callAsync('import.ea', this.eaBearerToken, {
+        updateExisting: this.storefrontOptions.updateExisting,
+        importPlaytime: this.storefrontOptions.importPlaytime
+      });
+      // Clear bearer token after successful import (security best practice)
+      this.eaBearerToken = null;
+
+      // Clear progress after a short delay
+      setTimeout(async () => {
+        try {
+          await Meteor.callAsync('import.clearStorefrontProgress');
+        } catch (error) {
+          console.error('Failed to clear progress:', error);
+        }
+      }, 2000);
+    } catch (error) {
+      this.storefrontError = error.reason || error.message || 'Import failed';
+    }
+
+    this.storefrontImporting = false;
+    m.redraw();
+  },
+
+  renderEaForm() {
+    const hasBearerToken = !!this.eaBearerToken;
+
+    return m('div.ea-form', [
+      // Instructions
+      m('div.ea-instructions', { style: 'margin-bottom: 1rem;' }, [
+        m('h4', 'How to get your access token:'),
+        m('ol', { style: 'margin: 0.5rem 0; padding-left: 1.5rem;' }, [
+          m('li', [
+            'Log in to your EA account at ',
+            m('a', {
+              href: 'https://www.ea.com/login',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'ea.com/login')
+          ]),
+          m('li', [
+            'Then open ',
+            m('a', {
+              href: 'https://accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&response_type=token&redirect_uri=nucleus:rest&prompt=none',
+              target: '_blank',
+              rel: 'noopener noreferrer'
+            }, 'this link'),
+            ' — it will show JSON with an ',
+            m('code', 'access_token'),
+            ' field. Copy that value (a long string of letters and numbers)'
+          ])
+        ]),
+        m('small', { style: 'color: var(--muted-color);' },
+          'If the link shows an error, make sure you are logged in at ea.com first.'
+        )
+      ]),
+
+      // Bearer token input
+      m('div.form-group', [
+        m('label', { for: 'ea-token' }, 'Access Token'),
+        m('textarea', {
+          id: 'ea-token',
+          rows: 3,
+          placeholder: 'Paste your access_token value here...',
+          value: this.eaBearerToken || '',
+          disabled: this.storefrontImporting,
+          oninput: (event) => this.updateEaBearerToken(event.target.value)
+        })
+      ]),
+
+      hasBearerToken && m('div.auth-status', { style: 'margin-bottom: 1rem;' }, [
+        m('span', { style: 'color: var(--ins-color);' }, 'Access token provided'),
+        ' ',
+        m('button.outline.secondary', {
+          style: 'padding: 0.25rem 0.5rem; font-size: 0.85em;',
+          onclick: () => this.clearEaAuth()
+        }, 'Clear')
+      ]),
+
+      // Security notice
+      m('div.privacy-notice', { style: 'margin-bottom: 1rem;' }, [
+        m('strong', 'Security Note: '),
+        'Your access token is only used once to fetch your game library and is never stored. It will be cleared after import.'
+      ]),
+
+      // Import options
+      m('fieldset', [
+        m('legend', 'Import Options'),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.updateExisting,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.updateExisting = event.target.checked;
+            }
+          }),
+          ' Update existing games (merge platforms and storefronts)'
+        ]),
+        m('label', [
+          m('input', {
+            type: 'checkbox',
+            checked: this.storefrontOptions.importPlaytime,
+            disabled: this.storefrontImporting,
+            onchange: (event) => {
+              this.storefrontOptions.importPlaytime = event.target.checked;
+            }
+          }),
+          ' Import playtime hours'
+        ])
+      ]),
+
+      // Import button (no preview step - token is single-use)
+      !this.storefrontResult && m('button', {
+        disabled: !hasBearerToken || this.storefrontImporting,
+        onclick: () => this.importEa()
+      }, this.storefrontImporting ? 'Importing...' : 'Import from EA App')
     ]);
   },
 

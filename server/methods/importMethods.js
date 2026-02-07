@@ -13,6 +13,7 @@ import {
 import { importEpicLibrary } from '../imports/epicImport.js';
 import { importAmazonLibrary } from '../imports/amazonImport.js';
 import { importOculusLibrary } from '../imports/oculusImport.js';
+import { importEaLibrary } from '../imports/eaImport.js';
 import { importUbisoftLibrary, importUbisoftLibraryWith2FA } from '../imports/ubisoftImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
@@ -525,6 +526,35 @@ Meteor.methods({
     };
 
     return importOculusLibrary(this.userId, accessToken, platform, importOptions);
+  },
+
+  // Import EA App library using bearer token
+  async 'import.ea'(bearerToken, options) {
+    check(bearerToken, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean),
+      importPlaytime: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!bearerToken.trim()) {
+      throw new Meteor.Error('invalid-input', 'Bearer token is required');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    // Use this.unblock() to allow other methods to run while import is processing
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false,
+      importPlaytime: options?.importPlaytime !== false
+    };
+
+    return importEaLibrary(this.userId, bearerToken.trim(), importOptions);
   },
 
   // Import Ubisoft Connect library using email/password
