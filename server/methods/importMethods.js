@@ -19,6 +19,7 @@ import { importXboxLibrary } from '../imports/xboxImport.js';
 import { importPsnLibrary } from '../imports/psnImport.js';
 import { importBattlenetLibrary } from '../imports/battlenetImport.js';
 import { importLegacyGamesLibrary } from '../imports/legacygamesImport.js';
+import { importRetroAchievementsLibrary } from '../imports/retroachievementsImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
 import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
@@ -731,5 +732,32 @@ Meteor.methods({
     };
 
     return importLegacyGamesLibrary(this.userId, email.trim(), password, importOptions);
+  },
+
+  // Import RetroAchievements library using username + API key
+  async 'import.retroachievements'(username, apiKey, options) {
+    check(username, String);
+    check(apiKey, String);
+    check(options, Match.Maybe({
+      updateExisting: Match.Maybe(Boolean)
+    }));
+
+    if (!this.userId) {
+      throw new Meteor.Error('not-authorized', 'Must be logged in to import');
+    }
+
+    if (!username.trim() || !apiKey.trim()) {
+      throw new Meteor.Error('invalid-input', 'Username and API key are required');
+    }
+
+    await checkImportRateLimit(this.userId);
+
+    this.unblock();
+
+    const importOptions = {
+      updateExisting: options?.updateExisting !== false
+    };
+
+    return importRetroAchievementsLibrary(this.userId, username.trim(), apiKey.trim(), importOptions);
   }
 });

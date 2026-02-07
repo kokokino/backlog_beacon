@@ -13,6 +13,7 @@ import { XboxForm } from './storefronts/XboxForm.js';
 import { PsnForm } from './storefronts/PsnForm.js';
 import { BattlenetForm } from './storefronts/BattlenetForm.js';
 import { LegacyGamesForm } from './storefronts/LegacyGamesForm.js';
+import { RetroAchievementsForm } from './storefronts/RetroAchievementsForm.js';
 
 const STOREFRONT_FORMS = {
   steam: SteamForm,
@@ -25,7 +26,8 @@ const STOREFRONT_FORMS = {
   xbox: XboxForm,
   psn: PsnForm,
   battlenet: BattlenetForm,
-  legacygames: LegacyGamesForm
+  legacygames: LegacyGamesForm,
+  retroachievements: RetroAchievementsForm
 };
 
 export const StorefrontTab = {
@@ -79,7 +81,8 @@ export const StorefrontTab = {
           m('option', { value: 'xbox' }, 'Xbox / Microsoft Store'),
           m('option', { value: 'psn' }, 'PlayStation'),
           m('option', { value: 'battlenet' }, 'Battle.net'),
-          m('option', { value: 'legacygames' }, 'Legacy Games')
+          m('option', { value: 'legacygames' }, 'Legacy Games'),
+          m('option', { value: 'retroachievements' }, 'RetroAchievements')
         ])
       ]),
 
