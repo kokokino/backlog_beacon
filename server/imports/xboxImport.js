@@ -23,15 +23,15 @@ function sleep(ms) {
 }
 
 // Fetch with retry logic for rate limiting
-async function fetchWithRetry(url, options = {}) {
+async function fetchWithRetry(url, options = {}, maxRetries = MAX_RETRIES) {
   let lastError = null;
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const response = await fetch(url, options);
 
       if (response.status === 429) {
-        console.log(`Xbox API rate limited (attempt ${attempt}/${MAX_RETRIES}), waiting ${RETRY_DELAY_MS}ms...`);
+        console.log(`Xbox API rate limited (attempt ${attempt}/${maxRetries}), waiting ${RETRY_DELAY_MS}ms...`);
         lastError = new Error('Xbox API rate limited');
         await sleep(RETRY_DELAY_MS);
         continue;
@@ -52,14 +52,35 @@ async function fetchWithRetry(url, options = {}) {
         throw error;
       }
       lastError = error;
-      if (attempt < MAX_RETRIES) {
-        console.log(`Xbox API request failed (attempt ${attempt}/${MAX_RETRIES}): ${error.message}`);
+      if (attempt < maxRetries) {
+        console.log(`Xbox API request failed (attempt ${attempt}/${maxRetries}): ${error.message}`);
         await sleep(RETRY_DELAY_MS);
       }
     }
   }
 
   throw new Meteor.Error('network-error', 'Could not connect to Xbox services. Please try again later.');
+}
+
+// Process items in parallel with bounded concurrency
+async function parallelMap(items, fn, concurrency) {
+  const results = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await fn(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workers = [];
+  for (let workerIndex = 0; workerIndex < Math.min(concurrency, items.length); workerIndex++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+
+  return results;
 }
 
 // Step 1: Exchange authorization code for OAuth access token
@@ -179,7 +200,7 @@ async function fetchTitleHistory(xuid, xstsToken, uhs) {
   return titles;
 }
 
-// Fetch playtime stats for a batch of title IDs
+// Fetch playtime stats - one API call per title (the batch API batches across users, not titles)
 async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
   const playtimeMap = new Map();
 
@@ -187,10 +208,10 @@ async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
     return playtimeMap;
   }
 
-  // Process in chunks of 100 to avoid overly large requests
-  const chunkSize = 100;
-  for (let start = 0; start < titleIds.length; start += chunkSize) {
-    const chunk = titleIds.slice(start, start + chunkSize);
+  const PLAYTIME_MAX_RETRIES = 3;
+
+  await parallelMap(titleIds, async (rawTitleId) => {
+    const titleId = String(rawTitleId);
 
     try {
       const requestBody = {
@@ -198,11 +219,11 @@ async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
         xuids: [xuid],
         groups: [{
           name: 'Hero',
-          titleIds: chunk
+          titleId: titleId
         }],
         stats: [{
           name: 'MinutesPlayed',
-          type: 'Integer'
+          titleId: titleId
         }]
       };
 
@@ -212,10 +233,10 @@ async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
           'Authorization': buildXblAuthHeader(uhs, xstsToken),
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'x-xbl-contract-version': '1'
+          'x-xbl-contract-version': '2'
         },
         body: JSON.stringify(requestBody)
-      });
+      }, PLAYTIME_MAX_RETRIES);
 
       const data = await response.json();
 
@@ -228,8 +249,7 @@ async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
           for (const stat of stats) {
             if (stat.name === 'MinutesPlayed' && stat.value) {
               const minutes = parseInt(stat.value, 10);
-              if (minutes > 0 && stat.groupproperties?.Other) {
-                const titleId = stat.groupproperties.Other;
+              if (minutes > 0) {
                 // Convert minutes to hours, rounded to 1 decimal
                 const hours = Math.round((minutes / 60) * 10) / 10;
                 playtimeMap.set(titleId, hours);
@@ -239,10 +259,9 @@ async function fetchPlaytimes(xuid, titleIds, xstsToken, uhs) {
         }
       }
     } catch (error) {
-      console.warn(`Failed to fetch Xbox playtime for chunk starting at ${start}:`, error.message);
-      // Continue with other chunks
+      // Skip titles that don't report MinutesPlayed or fail for other reasons
     }
-  }
+  }, 5);
 
   return playtimeMap;
 }
@@ -396,7 +415,7 @@ export async function importXboxLibrary(userId, authCode, options = {}) {
       titleId: title.titleId,
       platforms,
       storefronts,
-      hoursPlayed: playtimeMap.get(title.titleId) || null
+      hoursPlayed: playtimeMap.get(String(title.titleId)) || null
     };
   });
 
