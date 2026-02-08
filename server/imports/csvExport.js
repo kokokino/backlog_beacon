@@ -122,6 +122,7 @@ export async function exportCollectionCSV(userId) {
   // Cursor-based pagination with $lookup — 1 round-trip per chunk
   let lastId = null;
   let hasMore = true;
+  let processedCount = 0;
   while (hasMore) {
     const matchStage = lastId
       ? { $match: { userId, _id: { $gt: lastId } } }
@@ -183,14 +184,16 @@ export async function exportCollectionCSV(userId) {
       ];
 
       rows.push(row.map(escapeCSV).join(','));
-    }
+      processedCount++;
 
-    // Update export progress after each chunk (rows.length - 1 excludes header row)
-    await updateExportProgress(userId, {
-      status: 'processing',
-      current: rows.length - 1,
-      total: totalCount
-    });
+      if (processedCount % 100 === 0) {
+        await updateExportProgress(userId, {
+          status: 'processing',
+          current: processedCount,
+          total: totalCount
+        });
+      }
+    }
 
     hasMore = items.length === CHUNK_SIZE;
     if (hasMore) {
