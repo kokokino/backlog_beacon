@@ -35,8 +35,7 @@ async function checkImportRateLimit(userId) {
   const result = await checkCooldownRateLimit(`import:${userId}`, IMPORT_RATE_LIMIT_MS);
 
   if (!result.allowed) {
-    const waitSeconds = Math.ceil(result.waitMs / 1000);
-    throw new Meteor.Error('rate-limited', `Please wait ${waitSeconds} seconds before importing again`);
+    throw new Meteor.Error('rate-limited', 'Please wait 60 seconds between imports');
   }
 }
 
