@@ -80,7 +80,6 @@ export async function exportCollectionCSV(userId) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to export');
   }
 
-  const CHUNK_SIZE = 1000;
   const rawCollection = CollectionItems.rawCollection();
 
   // Count total items first
@@ -119,85 +118,70 @@ export async function exportCollectionCSV(userId) {
     total: totalCount
   });
 
-  // Cursor-based pagination with $lookup — 1 round-trip per chunk
-  let lastId = null;
-  let hasMore = true;
-  let processedCount = 0;
-  while (hasMore) {
-    const matchStage = lastId
-      ? { $match: { userId, _id: { $gt: lastId } } }
-      : { $match: { userId } };
+  const pipeline = [
+    { $match: { userId } },
+    { $sort: { _id: 1 } },
+    { $project: {
+      gameId: 1, igdbId: 1, platforms: 1, storefronts: 1,
+      status: 1, favorite: 1, rating: 1, hoursPlayed: 1,
+      dateAdded: 1, dateStarted: 1, dateCompleted: 1, notes: 1
+    }},
+    { $lookup: {
+      from: 'games',
+      localField: 'gameId',
+      foreignField: '_id',
+      pipeline: [
+        { $project: { title: 1, genres: 1, developer: 1, publisher: 1, releaseYear: 1 } }
+      ],
+      as: 'gameData'
+    }}
+  ];
 
-    const pipeline = [
-      matchStage,
-      { $sort: { _id: 1 } },
-      { $limit: CHUNK_SIZE },
-      { $project: {
-        gameId: 1, igdbId: 1, platforms: 1, storefronts: 1,
-        status: 1, favorite: 1, rating: 1, hoursPlayed: 1,
-        dateAdded: 1, dateStarted: 1, dateCompleted: 1, notes: 1
-      }},
-      { $lookup: {
-        from: 'games',
-        localField: 'gameId',
-        foreignField: '_id',
-        pipeline: [
-          { $project: { title: 1, genres: 1, developer: 1, publisher: 1, releaseYear: 1 } }
-        ],
-        as: 'gameData'
-      }}
+  let processedCount = 0;
+  const cursor = rawCollection.aggregate(pipeline);
+
+  for await (const item of cursor) {
+    const game = item.gameData?.[0] || null;
+
+    // Get storefront names
+    const storefrontNames = (item.storefronts || [])
+      .map(id => {
+        const storefront = getStorefrontById(id);
+        return storefront ? storefront.name : id;
+      })
+      .join(', ');
+
+    // Get platforms
+    const platforms = item.platforms || [];
+
+    const row = [
+      game?.title || 'Unknown Game',
+      item.igdbId || '',
+      platforms.join(', '),
+      storefrontNames,
+      item.status || '',
+      item.favorite ? 'Yes' : 'No',
+      item.rating || '',
+      item.hoursPlayed || '',
+      formatDate(item.dateAdded),
+      formatDate(item.dateStarted),
+      formatDate(item.dateCompleted),
+      item.notes || '',
+      game ? (game.genres || []).join(', ') : '',
+      game ? game.developer : '',
+      game ? game.publisher : '',
+      game ? game.releaseYear : ''
     ];
 
-    const items = await rawCollection.aggregate(pipeline).toArray();
+    rows.push(row.map(escapeCSV).join(','));
+    processedCount++;
 
-    for (const item of items) {
-      const game = item.gameData?.[0] || null;
-
-      // Get storefront names
-      const storefrontNames = (item.storefronts || [])
-        .map(id => {
-          const storefront = getStorefrontById(id);
-          return storefront ? storefront.name : id;
-        })
-        .join(', ');
-
-      // Get platforms
-      const platforms = item.platforms || [];
-
-      const row = [
-        game?.title || 'Unknown Game',
-        item.igdbId || '',
-        platforms.join(', '),
-        storefrontNames,
-        item.status || '',
-        item.favorite ? 'Yes' : 'No',
-        item.rating || '',
-        item.hoursPlayed || '',
-        formatDate(item.dateAdded),
-        formatDate(item.dateStarted),
-        formatDate(item.dateCompleted),
-        item.notes || '',
-        game ? (game.genres || []).join(', ') : '',
-        game ? game.developer : '',
-        game ? game.publisher : '',
-        game ? game.releaseYear : ''
-      ];
-
-      rows.push(row.map(escapeCSV).join(','));
-      processedCount++;
-
-      if (processedCount % 100 === 0) {
-        await updateExportProgress(userId, {
-          status: 'processing',
-          current: processedCount,
-          total: totalCount
-        });
-      }
-    }
-
-    hasMore = items.length === CHUNK_SIZE;
-    if (hasMore) {
-      lastId = items[items.length - 1]._id;
+    if (processedCount % 100 === 0) {
+      await updateExportProgress(userId, {
+        status: 'processing',
+        current: processedCount,
+        total: totalCount
+      });
     }
   }
 
