@@ -23,7 +23,7 @@ async function updateBacklogProgress(userId, progressData) {
 }
 
 // Escape a value for CSV
-function escapeCSV(value) {
+export function escapeCSV(value) {
   if (value === null || value === undefined) {
     return '';
   }
@@ -39,7 +39,7 @@ function escapeCSV(value) {
 }
 
 // Format date for CSV
-function formatDate(date) {
+export function formatDate(date) {
   if (!date) {
     return '';
   }
@@ -55,7 +55,7 @@ function formatDate(date) {
 
 
 // Helper to escape regex special characters
-function escapeRegex(string) {
+export function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

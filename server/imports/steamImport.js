@@ -25,7 +25,7 @@ function getApiKey() {
 }
 
 // Validate Steam ID format (17 digit number)
-function validateSteamId(steamId) {
+export function validateSteamId(steamId) {
   if (!steamId || typeof steamId !== 'string') {
     return false;
   }
@@ -33,7 +33,7 @@ function validateSteamId(steamId) {
 }
 
 // Extract username from Steam profile URL or return as-is
-function extractSteamUsername(input) {
+export function extractSteamUsername(input) {
   if (!input || typeof input !== 'string') {
     throw new Meteor.Error('invalid-username', 'Please enter a Steam username or profile URL.');
   }
@@ -152,7 +152,7 @@ export async function clearStorefrontProgress(userId) {
 }
 
 // Format playtime from minutes to hours
-function formatPlaytimeHours(minutes) {
+export function formatPlaytimeHours(minutes) {
   if (!minutes || minutes === 0) {
     return null;
   }

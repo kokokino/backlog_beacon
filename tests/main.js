@@ -18,6 +18,19 @@ describe("backlog_beacon", function () {
     // Import server methods so they're registered during tests
     require('../server/methods.js');
 
+    // Unit tests
+    require('./unit/csvParser.test.js');
+    require('./unit/csvExport.test.js');
+    require('./unit/igdbMatching.test.js');
+    require('./unit/importParsers.test.js');
+    require('./unit/gameHelpers.test.js');
+    require('./unit/coverHelpers.test.js');
+    require('./unit/validation.test.js');
+
+    // Integration tests
+    require('./integration/collectionMethods.test.js');
+    require('./integration/exportMethod.test.js');
+
     it("server is not client", function () {
       assert.strictEqual(Meteor.isClient, false);
     });

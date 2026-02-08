@@ -55,13 +55,13 @@ async function checkRateLimit(userId, methodName) {
 
 const validStatuses = Object.values(COLLECTION_STATUSES);
 
-function validateStatus(status) {
+export function validateStatus(status) {
   if (!validStatuses.includes(status)) {
     throw new Meteor.Error('invalid-status', `Status must be one of: ${validStatuses.join(', ')}`);
   }
 }
 
-function validateRating(rating) {
+export function validateRating(rating) {
   if (rating !== null && rating !== undefined) {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new Meteor.Error('invalid-rating', 'Rating must be an integer between 1 and 5');
@@ -69,7 +69,7 @@ function validateRating(rating) {
   }
 }
 
-function validateStorefronts(storefronts) {
+export function validateStorefronts(storefronts) {
   if (!storefronts || storefronts.length === 0) {
     return [];
   }

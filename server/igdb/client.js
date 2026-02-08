@@ -159,7 +159,7 @@ export async function getGamesByIds(igdbIds) {
 }
 
 // Levenshtein distance for fuzzy string matching
-function levenshteinDistance(str1, str2) {
+export function levenshteinDistance(str1, str2) {
   const m = str1.length;
   const n = str2.length;
 
@@ -189,7 +189,7 @@ function levenshteinDistance(str1, str2) {
 }
 
 // Normalize a game name for comparison (handles semantic equivalents)
-function normalizeForComparison(name) {
+export function normalizeForComparison(name) {
   let result = name.toLowerCase();
 
   // Replace fractions with words
@@ -218,7 +218,7 @@ function normalizeForComparison(name) {
 }
 
 // Calculate similarity score (0-100) between query and IGDB result
-function calculateMatchScore(query, igdbName) {
+export function calculateMatchScore(query, igdbName) {
   const queryLower = query.toLowerCase();
   const igdbLower = igdbName.toLowerCase();
 
@@ -267,7 +267,7 @@ function calculateMatchScore(query, igdbName) {
 }
 
 // Generate search patterns for batched IGDB query
-function getSearchPatterns(name) {
+export function getSearchPatterns(name) {
   const patterns = [];
   const escaped = name.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
 

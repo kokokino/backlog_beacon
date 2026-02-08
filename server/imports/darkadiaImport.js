@@ -7,7 +7,7 @@ import { parseCSVToObjects } from './csvParser.js';
 import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
 // Map Darkadia status to our status
-function mapStatus(darkadiaRow) {
+export function mapStatus(darkadiaRow) {
   if (darkadiaRow.Playing === '1') {
     return 'playing';
   }
@@ -27,7 +27,7 @@ function mapStatus(darkadiaRow) {
 }
 
 // Parse storefronts from Tags field
-function parseStorefronts(tagsString) {
+export function parseStorefronts(tagsString) {
   if (!tagsString) {
     return [];
   }
@@ -46,7 +46,7 @@ function parseStorefronts(tagsString) {
 }
 
 // Parse platforms from Platforms field
-function parsePlatforms(platformsString) {
+export function parsePlatforms(platformsString) {
   if (!platformsString) {
     return [];
   }
@@ -55,7 +55,7 @@ function parsePlatforms(platformsString) {
 }
 
 // Parse date from Darkadia format (YYYY-MM-DD)
-function parseDate(dateString) {
+export function parseDate(dateString) {
   if (!dateString || dateString === '') {
     return null;
   }
