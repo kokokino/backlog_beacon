@@ -31,8 +31,6 @@ Note: The Hub must be running (usually on port 3000) for SSO authentication to w
 - **quave:migrations** - Database migrations
 - **Babylon.js 8** - 3D beanstalk visualization
 
-This project uses Babylon.js for 3D rendering. Key concerns: texture lifecycle management, LRU eviction of cached textures, and scene disposal performance. Always consider the Babylon.js texture/material reference graph when modifying disposal or caching logic.
-
 ## Architecture
 
 ### Hub & Spoke SSO Flow
@@ -42,19 +40,31 @@ This project uses Babylon.js for 3D rendering. Key concerns: texture lifecycle m
 4. App validates signature with Hub's public key, checks nonce for replay
 5. User created/updated locally, session established
 
+Nonce replay protection uses MongoDB TTL index on `UsedNonces` collection (auto-expires after 10 minutes).
+
 ### Key Directories
 - `imports/hub/` - SSO validation, Hub API client, subscription checks
 - `imports/ui/` - Mithril components (pages/, components/, layouts/)
+- `imports/ui/components/beanstalk/` - 3D scene (Babylon.js)
+- `imports/ui/lib/` - Shared utilities (coverUrls, imagePreloader, toast)
 - `imports/lib/collections/` - MongoDB collections with schema docs and exported constants
 - `server/covers/` - Background cover image processing queue
+- `server/imports/` - Import source parsers (Steam, GOG, PSN, etc.)
+- `server/igdb/` - IGDB API client with OAuth2 + distributed rate limiting (4 req/sec)
 - `server/migrations/` - Sequential migrations (numbered `1_`, `2_`, etc.)
 - `server/lib/` - Utilities like distributed rate limiting
 - `cdn/` - Generated cover images (gitignored)
 
+### Routing
+Routes are defined in `client/main.js` using Mithril's `m.route()`. A `layoutRoute()` helper wraps pages in `MainLayout` with a `MeteorWrapper` that uses `Tracker.autorun()` to trigger `m.redraw()` on Meteor user state changes. The `/sso` route is the only one not wrapped in the layout.
+
 ### Data Flow
-- **Publications** stream reactive data via `Meteor.subscribe()`
+- **Publications** stream reactive data via `Meteor.subscribe()` — all check auth first and use explicit field projections
 - **Methods** handle mutations via `Meteor.callAsync()`
 - **Tracker.autorun()** triggers Mithril redraws on data changes
+
+### Data Denormalization
+CollectionItems embed frequently-accessed game fields to avoid `$lookup` joins. The `buildEmbeddedGame(game)` helper in `server/lib/gameHelpers.js` extracts `title`, `releaseYear`, `ownerId`, `genres`, `localCoverUrl`, `coverImageId`, and `igdbCoverUrl`. When adding new game fields that need to appear in collection views, update this function and consider a backfill migration.
 
 ## Coding Conventions
 
@@ -100,8 +110,9 @@ oninit() {
 ```
 
 ### Protected Routes
-- `RequireAuth` HOC - redirects unauthenticated users
-- `RequireSubscription` HOC - checks product access via Hub
+- `RequireAuth` HOC - redirects to `/not-logged-in` if unauthenticated
+- `RequireSubscription` HOC - checks product access via Hub, redirects to `/no-subscription`
+- Usage: `m(RequireAuth, m(RequireSubscription, m(PageComponent)))`
 
 ### Meteor Methods
 All methods follow this pattern (see `server/methods.js`):
@@ -122,22 +133,7 @@ async 'collection.addItem'(gameId, platform, status = 'backlog') {
 ```
 
 ### Publications
-All publications check auth first and use explicit field projections:
-```javascript
-Meteor.publish('game', function(gameId) {
-  check(gameId, String);
-
-  if (!this.userId) {
-    this.ready();
-    return;
-  }
-
-  return Games.find(
-    { _id: gameId },
-    { fields: { _id: 1, title: 1, platforms: 1, releaseYear: 1, coverImageId: 1 } }
-  );
-});
-```
+Same auth-check pattern as methods, but use `this.ready(); return;` for unauthenticated users (not `throw`), and always use explicit field projections in `find()`.
 
 ### MongoDB Aggregations
 Complex queries use `$facet` for single-pass computation (see `collection.getStats`):
@@ -152,11 +148,22 @@ const pipeline = [
 ];
 ```
 
+## Game Import System
+
+Two-phase import flow in `server/methods/importMethods.js`:
+1. **Preview**: User provides credentials/CSV → server fetches external data, matches against IGDB via `searchAndCacheGame()` → returns matched/unmatched games
+2. **Confirm**: User selects which games to import → server creates CollectionItems with `buildEmbeddedGame()`
+
+Supported sources: Steam, GOG, Epic, Amazon, Oculus, EA, Ubisoft, Xbox, PlayStation, Battle.net, Legacy Games, RetroAchievements, plus CSV (Darkadia, Backlog Beacon exports).
+
+Import progress is tracked in the `ImportProgress` collection and published reactively. Cooldown rate limit: 1 minute between imports per user.
+
 ## Rate Limiting
 
 Distributed rate limiting via MongoDB atomic operations (`server/lib/distributedRateLimit.js`):
 - **Window-based**: `checkDistributedRateLimit(key, maxRequests, windowMs)` - 10 req/sec/user for methods
 - **Cooldown-based**: `checkCooldownRateLimit(key, cooldownMs)` - one request per interval
+- **Blocking wait**: `waitForRateLimit(key, maxRequests, windowMs)` - used for IGDB (4 req/sec)
 - Works across multiple server instances without distributed locks
 
 ## Cover Processing Pipeline
@@ -168,6 +175,34 @@ Background queue system in `server/covers/`:
 - Priority system: user-accessed games processed before bulk imports
 - Max 3 retries before marking failed
 
+Client-side cover URL fallback chain (`imports/ui/lib/coverUrls.js`):
+1. `localCoverUrl` — processed WebP from local/B2 storage
+2. `igdbCoverUrl` — IGDB CDN (built from `coverImageId`)
+3. SVG placeholder (data URI)
+
+## 3D Beanstalk Scene (Babylon.js)
+
+Files in `imports/ui/components/beanstalk/`:
+- **BeanstalkScene.js** — Main orchestrator: engine, camera, lighting, sky
+- **BeanstalkPool.js** — `ObjectPool` (reusable meshes) and `TextureCache` (LRU with async loading, max 200)
+- **GameCase3D.js** — DVD case mesh with cover texture, `releaseTexture()` for pool return
+- **BeanstalkPlant.js** — Central stem mesh
+- **BeanstalkInput.js** — Camera controls (pan, zoom, rotate)
+- **BeanstalkEffects.js** — Visual effects (fog, lighting)
+- **LeafData.js** — Leaf mesh generation
+
+**TextureCache** is an LRU cache with states: PENDING → LOADING → LOADED | FAILED. Features retry logic (max 3), CORS proxy fallback, 15-second timeout, and a `disposed` flag to prevent orphaned textures from in-flight async loads. Evicted LOADED textures are disposed immediately (safe because visible cases' textures are at front of LRU).
+
+**Key invariant**: When a GameCase3D returns to the pool, `releaseTexture()` must clear `material.albedoTexture = null` so the texture can be safely evicted.
+
+When modifying disposal, caching, or eviction code: (1) verify texture count via `engine.getLoadedTexturesCount()`, (2) check for visual artifacts (black/gray covers), (3) measure dispose timing. Always verify resources being disposed are not still referenced by visible objects.
+
+## Virtual Scrolling
+
+`VirtualScrollGrid` (`imports/ui/components/VirtualScrollGrid.js`) renders only visible items plus a 12-item buffer. Uses ResizeObserver for responsive grid layout with debounced width-change detection to prevent feedback loops. Scroll handling is throttled via requestAnimationFrame + 100ms scroll-end timeout.
+
+`ImagePreloader` (`imports/ui/lib/imagePreloader.js`) is a separate LRU cache (max 100) for HTML `<img>` elements with velocity-based directional preloading.
+
 ## Multi-Instance Deployment
 
 Settings control which instances run background jobs:
@@ -175,10 +210,12 @@ Settings control which instances run background jobs:
 {
   "private": {
     "isWorkerInstance": true,   // Runs cover processor
-    "isSchedulerInstance": true // Runs scheduled jobs (game refresh)
+    "isSchedulerInstance": true // Runs scheduled jobs (game refresh, every 24h)
   }
 }
 ```
+
+Both default to `true` if not set.
 
 ## Custom Games
 
@@ -213,15 +250,3 @@ Methods throw `Meteor.Error(code, message)`:
 - `'rate-limited'` - too many requests
 
 UI displays `error.reason || error.message` in modals/toasts.
-
-## Resource Management
-
-When fixing resource leaks or disposal logic, always verify that resources being disposed are not still actively referenced by visible/in-use objects. Check for active references before any disposal operation.
-
-## Debugging Guidelines
-
-When implementing performance fixes (especially disposal/cleanup), validate the fix incrementally: first confirm the count of resources before and after, then check for visual regressions, before declaring the fix complete.
-
-## Validation Checklist
-
-After modifying disposal, caching, or eviction code, manually verify: (1) texture count via engine.getLoadedTexturesCount() or equivalent, (2) no visible artifacts (black/gray covers), (3) dispose timing with console.time measurements.
