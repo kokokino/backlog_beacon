@@ -1,6 +1,6 @@
 import m from 'mithril';
 import { Meteor } from 'meteor/meteor';
-import { downloadCSV } from '../../components/import/importHelpers.js';
+import { downloadCSV, clearProgressAfterDelay } from '../../components/import/importHelpers.js';
 
 export const ExportTab = {
   oninit() {
@@ -16,6 +16,7 @@ export const ExportTab = {
     try {
       const csvContent = await Meteor.callAsync('export.collection');
       downloadCSV(csvContent, 'backlog_beacon_export.csv');
+      clearProgressAfterDelay('import.clearProgress', 'export');
     } catch (error) {
       this.exportError = error.reason || error.message || 'Export failed';
     }
@@ -24,11 +25,19 @@ export const ExportTab = {
     m.redraw();
   },
 
-  view() {
+  view(vnode) {
+    const { progress } = vnode.attrs;
+
     return m('div.export-section', [
       m('header', [
         m('h2', 'Export Collection'),
         m('p', 'Download your entire game collection as a CSV file. You can use this to backup your data or import it later.')
+      ]),
+
+      progress && progress.status === 'processing' && m('div.import-progress', [
+        m('h3', 'Export Progress'),
+        m('p', `Processing ${progress.current || 0} of ${progress.total || 0} games`),
+        m('progress', { value: progress.current || 0, max: progress.total || 100 })
       ]),
 
       this.exportError && m('div.error-message', { role: 'alert' }, [

@@ -84,11 +84,6 @@ async function updateProgress(userId, progressData) {
   );
 }
 
-// Clear progress from the database
-async function clearProgress(userId, type = 'darkadia') {
-  await ImportProgress.removeAsync({ userId, type });
-}
-
 // Import a single Darkadia row
 async function importRow(userId, row, options = {}) {
   const gameName = row.Name;
@@ -354,5 +349,3 @@ export async function previewDarkadiaImport(userId, csvContent) {
   return preview;
 }
 
-// Export clearProgress for use in methods
-export { clearProgress };

@@ -1,6 +1,6 @@
 import { Meteor } from 'meteor/meteor';
 import { check, Match } from 'meteor/check';
-import { importDarkadiaCSV, previewDarkadiaImport, clearProgress } from '../imports/darkadiaImport.js';
+import { importDarkadiaCSV, previewDarkadiaImport } from '../imports/darkadiaImport.js';
 import { exportCollectionCSV, importBacklogBeaconCSV, previewBacklogBeaconImport } from '../imports/csvExport.js';
 import { previewSteamLibrary, importSteamLibrary, clearStorefrontProgress, isSteamConfigured } from '../imports/steamImport.js';
 import {
@@ -21,7 +21,7 @@ import { importBattlenetLibrary } from '../imports/battlenetImport.js';
 import { importLegacyGamesLibrary } from '../imports/legacygamesImport.js';
 import { importRetroAchievementsLibrary } from '../imports/retroachievementsImport.js';
 import { CollectionItems } from '../../imports/lib/collections/collectionItems.js';
-import { ImportProgress } from '../../imports/lib/collections/importProgress.js';
+import { ImportProgress, clearProgress } from '../../imports/lib/collections/importProgress.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { findStorefrontByName } from '../../imports/lib/constants/storefronts.js';
 import { isConfigured } from '../igdb/client.js';
@@ -99,13 +99,13 @@ Meteor.methods({
   
   // Clear import progress
   async 'import.clearProgress'(type) {
-    check(type, Match.Maybe(String));
+    check(type, String);
 
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in');
     }
 
-    await clearProgress(this.userId, type || 'darkadia');
+    await clearProgress(this.userId, type);
   },
   
   // Export collection to CSV
@@ -113,7 +113,9 @@ Meteor.methods({
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in to export');
     }
-    
+
+    this.unblock();
+
     return exportCollectionCSV(this.userId);
   },
   

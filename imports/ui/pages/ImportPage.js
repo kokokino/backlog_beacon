@@ -15,7 +15,7 @@ const TAB_COMPONENTS = {
   [TABS.BACKLOG_BEACON]: { component: BacklogBeaconTab, progressType: 'backlog' },
   [TABS.SIMPLE]: { component: SimpleTab, progressType: 'simple' },
   [TABS.STOREFRONT]: { component: StorefrontTab, progressType: 'storefront' },
-  [TABS.EXPORT]: { component: ExportTab, progressType: null }
+  [TABS.EXPORT]: { component: ExportTab, progressType: 'export' }
 };
 
 const ImportContent = {
@@ -34,7 +34,8 @@ const ImportContent = {
         darkadia: ImportProgress.findOne({ type: 'darkadia' }),
         backlog: ImportProgress.findOne({ type: 'backlog' }),
         simple: ImportProgress.findOne({ type: 'simple' }),
-        storefront: ImportProgress.findOne({ type: 'storefront' })
+        storefront: ImportProgress.findOne({ type: 'storefront' }),
+        export: ImportProgress.findOne({ type: 'export' })
       };
       m.redraw();
     });

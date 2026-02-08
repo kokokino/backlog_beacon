@@ -58,7 +58,7 @@ export const DarkadiaTab = {
       this.result = await Meteor.callAsync('import.darkadia', content, this.options);
       this.file = null;
       this.preview = null;
-      clearProgressAfterDelay('import.clearProgress');
+      clearProgressAfterDelay('import.clearProgress', 'darkadia');
     } catch (error) {
       this.error = error.reason || error.message || 'Import failed';
     }

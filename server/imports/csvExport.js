@@ -7,6 +7,21 @@ import { parseCSVToObjects } from './csvParser.js';
 import { searchAndCacheGame } from '../igdb/gameCache.js';
 import { buildEmbeddedGame } from '../lib/gameHelpers.js';
 
+// Update progress for export
+async function updateExportProgress(userId, progressData) {
+  await ImportProgress.upsertAsync(
+    { userId, type: 'export' },
+    {
+      $set: {
+        ...progressData,
+        userId,
+        type: 'export',
+        updatedAt: new Date()
+      }
+    }
+  );
+}
+
 // Update progress for Backlog Beacon import
 async function updateBacklogProgress(userId, progressData) {
   await ImportProgress.upsertAsync(
@@ -59,13 +74,14 @@ export function escapeRegex(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Export user's collection to CSV (chunked processing to reduce memory usage)
+// Export user's collection to CSV (cursor-based pagination with $lookup)
 export async function exportCollectionCSV(userId) {
   if (!userId) {
     throw new Meteor.Error('not-authorized', 'Must be logged in to export');
   }
 
-  const CHUNK_SIZE = 200;
+  const CHUNK_SIZE = 1000;
+  const rawCollection = CollectionItems.rawCollection();
 
   // Count total items first
   const totalCount = await CollectionItems.countDocuments({ userId });
@@ -96,37 +112,45 @@ export async function exportCollectionCSV(userId) {
 
   const rows = [headers.map(escapeCSV).join(',')];
 
-  // Process in chunks to reduce memory usage
-  let skip = 0;
-  while (skip < totalCount) {
-    const items = await CollectionItems.find(
-      { userId },
-      { limit: CHUNK_SIZE, skip }
-    ).fetchAsync();
+  // Initialize export progress
+  await updateExportProgress(userId, {
+    status: 'processing',
+    current: 0,
+    total: totalCount
+  });
 
-    if (items.length === 0) {
-      break;
-    }
+  // Cursor-based pagination with $lookup — 1 round-trip per chunk
+  let lastId = null;
+  let hasMore = true;
+  while (hasMore) {
+    const matchStage = lastId
+      ? { $match: { userId, _id: { $gt: lastId } } }
+      : { $match: { userId } };
 
-    // Fetch only the games needed for this chunk (with field projection)
-    const gameIds = items.map(item => item.gameId).filter(Boolean);
-    const games = await Games.find(
-      { _id: { $in: gameIds } },
-      {
-        fields: {
-          _id: 1,
-          title: 1,
-          genres: 1,
-          developer: 1,
-          publisher: 1,
-          releaseYear: 1
-        }
-      }
-    ).fetchAsync();
-    const gamesMap = new Map(games.map(game => [game._id, game]));
+    const pipeline = [
+      matchStage,
+      { $sort: { _id: 1 } },
+      { $limit: CHUNK_SIZE },
+      { $project: {
+        gameId: 1, igdbId: 1, platforms: 1, storefronts: 1,
+        status: 1, favorite: 1, rating: 1, hoursPlayed: 1,
+        dateAdded: 1, dateStarted: 1, dateCompleted: 1, notes: 1
+      }},
+      { $lookup: {
+        from: 'games',
+        localField: 'gameId',
+        foreignField: '_id',
+        pipeline: [
+          { $project: { title: 1, genres: 1, developer: 1, publisher: 1, releaseYear: 1 } }
+        ],
+        as: 'gameData'
+      }}
+    ];
+
+    const items = await rawCollection.aggregate(pipeline).toArray();
 
     for (const item of items) {
-      const game = item.gameId ? gamesMap.get(item.gameId) : null;
+      const game = item.gameData?.[0] || null;
 
       // Get storefront names
       const storefrontNames = (item.storefronts || [])
@@ -161,8 +185,25 @@ export async function exportCollectionCSV(userId) {
       rows.push(row.map(escapeCSV).join(','));
     }
 
-    skip += CHUNK_SIZE;
+    // Update export progress after each chunk (rows.length - 1 excludes header row)
+    await updateExportProgress(userId, {
+      status: 'processing',
+      current: rows.length - 1,
+      total: totalCount
+    });
+
+    hasMore = items.length === CHUNK_SIZE;
+    if (hasMore) {
+      lastId = items[items.length - 1]._id;
+    }
   }
+
+  // Mark export as complete
+  await updateExportProgress(userId, {
+    status: 'complete',
+    current: totalCount,
+    total: totalCount
+  });
 
   return rows.join('\n');
 }
