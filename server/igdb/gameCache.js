@@ -70,6 +70,9 @@ async function propagateGameUpdates(gameId, gameData) {
   if (gameData.igdbCoverUrl !== undefined) {
     updates['game.igdbCoverUrl'] = gameData.igdbCoverUrl;
   }
+  if (gameData.slug !== undefined) {
+    updates['game.slug'] = gameData.slug;
+  }
   // Note: localCoverUrl is propagated separately by coverProcessor when cover is downloaded
 
   if (Object.keys(updates).length > 0) {

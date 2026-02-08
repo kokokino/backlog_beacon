@@ -6,7 +6,7 @@ const EXTERNAL_SITES = [
     name: 'IGDB',
     domain: 'igdb.com',
     getUrl: (game, encodedTitle) => {
-      if (game?.slug) {
+      if (game?.slug && !game?.ownerId) {
         return `https://www.igdb.com/games/${game.slug}`;
       }
       return `https://www.igdb.com/search?q=${encodedTitle}`;

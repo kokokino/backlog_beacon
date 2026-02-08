@@ -16,6 +16,7 @@ export function buildEmbeddedGame(game) {
 
   return {
     title: game.title || null,
+    slug: game.slug || null,
     releaseYear: game.releaseYear || null,
     ownerId: game.ownerId || null,
     genres: game.genres || [],

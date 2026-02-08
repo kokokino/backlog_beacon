@@ -240,6 +240,9 @@ Meteor.methods({
     if (updateFields.genres !== undefined) {
       gameUpdates['game.genres'] = updateFields.genres;
     }
+    if (updateFields.slug !== undefined) {
+      gameUpdates['game.slug'] = updateFields.slug;
+    }
 
     if (Object.keys(gameUpdates).length > 0) {
       await CollectionItems.updateAsync(

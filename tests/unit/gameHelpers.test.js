@@ -15,6 +15,7 @@ describe('Game Helpers', function () {
       const game = {
         _id: 'game123',
         title: 'Zelda',
+        slug: 'zelda-tears-of-the-kingdom',
         releaseYear: 2023,
         ownerId: 'user1',
         genres: ['Action', 'Adventure'],
@@ -28,6 +29,7 @@ describe('Game Helpers', function () {
       const result = buildEmbeddedGame(game);
 
       assert.strictEqual(result.title, 'Zelda');
+      assert.strictEqual(result.slug, 'zelda-tears-of-the-kingdom');
       assert.strictEqual(result.releaseYear, 2023);
       assert.strictEqual(result.ownerId, 'user1');
       assert.deepStrictEqual(result.genres, ['Action', 'Adventure']);
@@ -54,6 +56,7 @@ describe('Game Helpers', function () {
       const result = buildEmbeddedGame(game);
 
       assert.strictEqual(result.title, 'Minimal');
+      assert.strictEqual(result.slug, null);
       assert.strictEqual(result.releaseYear, null);
       assert.strictEqual(result.ownerId, null);
       assert.deepStrictEqual(result.genres, []);
@@ -66,6 +69,7 @@ describe('Game Helpers', function () {
       const result = buildEmbeddedGame({});
 
       assert.strictEqual(result.title, null);
+      assert.strictEqual(result.slug, null);
       assert.strictEqual(result.releaseYear, null);
       assert.deepStrictEqual(result.genres, []);
     });
