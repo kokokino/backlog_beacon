@@ -12,8 +12,6 @@ import { PositionIndicator } from '../components/PositionIndicator.js';
 import { BeanstalkView } from '../components/beanstalk/BeanstalkView.js';
 import { BookshelfView } from '../components/BookshelfView.js';
 import { BookshelfThemeSelector, loadBookshelfTheme, saveBookshelfTheme } from '../components/BookshelfThemeSelector.js';
-import { CollectionItems } from '../../lib/collections/collectionItems.js';
-import { Games } from '../../lib/collections/games.js';
 import { UserPlatforms } from '../../lib/collections/userPlatforms.js';
 
 const PAGE_SIZE = 24;
@@ -35,9 +33,7 @@ const CollectionContent = {
     this.loading = true;
     this.loadingMore = false;
     this.editingItem = null;
-    this.subscription = null;
     this.platformsSubscription = null;
-    this.computation = null;
     this.searchDebounceTimer = null;
     this.searchFeedbackTimer = null;
     this.isSearchPending = false;
@@ -58,14 +54,8 @@ const CollectionContent = {
   },
 
   onremove(vnode) {
-    if (this.subscription) {
-      this.subscription.stop();
-    }
     if (this.platformsSubscription) {
       this.platformsSubscription.stop();
-    }
-    if (this.computation) {
-      this.computation.stop();
     }
     if (this.searchDebounceTimer) {
       clearTimeout(this.searchDebounceTimer);
@@ -116,98 +106,36 @@ const CollectionContent = {
   },
 
   setupSubscriptions() {
-    if (this.subscription) {
-      this.subscription.stop();
-    }
-    if (this.computation) {
-      this.computation.stop();
-    }
-
     this.loading = true;
     m.redraw();
 
-    // Capture current sort value for use in the autorun closure
-    const currentSort = this.filters.sort || 'name-asc';
-    const sortField = currentSort.startsWith('date') ? 'dateAdded' : 'title';
-    const sortDirection = currentSort.endsWith('desc') ? -1 : 1;
+    const isPagesMode = this.viewMode === VIEW_MODES.PAGES;
 
-    const isInfiniteMode = this.viewMode === VIEW_MODES.INFINITE;
-    const isBookshelfMode = this.viewMode === VIEW_MODES.BOOKSHELF;
-    const isBeanstalkMode = this.viewMode === VIEW_MODES.BEANSTALK;
-
-    // INFINITE/BOOKSHELF/BEANSTALK MODE: Use method calls only (no subscription reactivity issues)
-    if (isInfiniteMode || isBookshelfMode || isBeanstalkMode) {
-      this.loadInitialInfiniteData();
+    if (isPagesMode) {
+      this.loadPagesData();
       return;
     }
 
-    // PAGES MODE: Use subscriptions for reactive updates
-    const options = {
-      sort: currentSort,
-      limit: PAGE_SIZE,
-      skip: (this.currentPage - 1) * PAGE_SIZE
-    };
-    if (this.filters.status) {
-      options.status = this.filters.status;
+    // INFINITE/BOOKSHELF/BEANSTALK MODE
+    this.loadInitialInfiniteData();
+  },
+
+  async loadPagesData() {
+    const options = this.buildFilterOptions();
+    options.limit = PAGE_SIZE;
+    options.skip = (this.currentPage - 1) * PAGE_SIZE;
+
+    try {
+      const items = await Meteor.callAsync('collection.getItemsChunk', options);
+      this.items = items;
+      this.loadedCount = items.length;
+      this.loading = false;
+      m.redraw();
+    } catch (error) {
+      console.error('Failed to load pages data:', error);
+      this.loading = false;
+      m.redraw();
     }
-    if (this.filters.platform) {
-      options.platform = this.filters.platform;
-    }
-    if (this.filters.favorite) {
-      options.favorite = true;
-    }
-    if (this.filters.search && this.filters.search.trim().length >= 3) {
-      options.search = this.filters.search.trim();
-    }
-
-    this.subscription = Meteor.subscribe('userCollectionWithGames', options);
-
-    this.computation = Tracker.autorun(() => {
-      const ready = this.subscription.ready();
-
-      if (ready) {
-        let items = CollectionItems.find({}).fetch();
-
-        // Build games lookup and embed game in each item (same structure as method response)
-        const gameIds = items.map(item => item.gameId).filter(Boolean);
-        const games = Games.find({ _id: { $in: gameIds } }).fetch();
-        const gamesMap = {};
-        games.forEach(game => {
-          gamesMap[game._id] = game;
-        });
-
-        // Embed game in each item
-        items.forEach(item => {
-          item.game = gamesMap[item.gameId] || null;
-        });
-
-        // Sort client-side
-        if (sortField === 'title') {
-          items.sort((a, b) => {
-            const titleA = (a.game?.title || '').toLowerCase();
-            const titleB = (b.game?.title || '').toLowerCase();
-            if (titleA < titleB) {
-              return sortDirection === 1 ? -1 : 1;
-            }
-            if (titleA > titleB) {
-              return sortDirection === 1 ? 1 : -1;
-            }
-            return 0;
-          });
-        } else {
-          items.sort((a, b) => {
-            const valA = a[sortField] || 0;
-            const valB = b[sortField] || 0;
-            return sortDirection === 1 ? valA - valB : valB - valA;
-          });
-        }
-
-        this.items = items;
-        this.loadedCount = items.length;
-        this.loading = false;
-        m.redraw();
-      }
-    });
   },
 
   async loadInitialInfiniteData() {
