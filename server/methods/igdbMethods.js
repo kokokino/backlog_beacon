@@ -58,24 +58,26 @@ function transformIgdbGameForCache(igdbGame) {
 }
 
 Meteor.methods({
-  async 'igdb.searchAndCache'(query) {
+  async 'igdb.searchAndCache'(query, limit = 24, offset = 0) {
     check(query, String);
-    
+    check(limit, Match.Integer);
+    check(offset, Match.Integer);
+
     if (!this.userId) {
       throw new Meteor.Error('not-authorized', 'Must be logged in to search');
     }
-    
+
     if (!isConfigured()) {
       throw new Meteor.Error('igdb-not-configured', 'IGDB is not configured');
     }
-    
+
     await checkSearchRateLimit(this.userId);
-    
+
     if (query.trim().length < 3) {
       return [];
     }
-    
-    const igdbResults = await searchGames(query, 20);
+
+    const igdbResults = await searchGames(query, limit, offset);
     
     if (igdbResults.length === 0) {
       return [];

@@ -85,23 +85,24 @@ async function makeRequest(endpoint, body) {
 }
 
 // Search for games by name
-export async function searchGames(query, limit = 20) {
+export async function searchGames(query, limit = 20, offset = 0) {
   if (!query || query.trim().length < 2) {
     return [];
   }
 
   const cleanedQuery = sanitizeSearchQuery(query);
   const sanitizedQuery = cleanedQuery.replace(/"/g, '\\"');
-  
+
   const body = `
     search "${sanitizedQuery}";
-    fields name, slug, summary, cover.image_id, platforms.name, genres.name, 
+    fields name, slug, summary, cover.image_id, platforms.name, genres.name,
            first_release_date, involved_companies.company.name, involved_companies.developer,
            involved_companies.publisher, rating, rating_count, aggregated_rating,
            aggregated_rating_count, updated_at, checksum;
     limit ${Math.min(limit, 50)};
+    offset ${offset};
   `;
-  
+
   return makeRequest('games', body);
 }
 

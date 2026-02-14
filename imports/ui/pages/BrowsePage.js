@@ -31,6 +31,8 @@ const BrowseContent = {
     this.isSearchPending = false;
     this.currentPage = 1;
     this.totalCount = 0;
+    this.igdbOffset = 0;
+    this.igdbHasMore = false;
 
     this.checkIgdbConfigured();
   },
@@ -183,6 +185,8 @@ const BrowseContent = {
       this.igdbGames = [];
       this.igdbSearched = false;
       this.igdbError = null;
+      this.igdbOffset = 0;
+      this.igdbHasMore = false;
 
       this.setupSubscriptions();
       this.fetchTotalCount();
@@ -194,7 +198,7 @@ const BrowseContent = {
     }, 800);
   },
   
-  async searchIgdb(query) {
+  async searchIgdb(query, offset = 0) {
     const searchingFor = query.trim();
     if (searchingFor.length < 3) {
       return;
@@ -205,7 +209,7 @@ const BrowseContent = {
     m.redraw();
 
     try {
-      const results = await Meteor.callAsync('igdb.searchAndCache', query);
+      const results = await Meteor.callAsync('igdb.searchAndCache', query, PAGE_SIZE, offset);
 
       // RACE CONDITION FIX: discard if query changed while waiting
       if (this.searchQuery !== searchingFor) {
@@ -215,6 +219,8 @@ const BrowseContent = {
       const localIgdbIds = new Set(this.localGames.map(g => g.igdbId).filter(Boolean));
 
       this.igdbGames = results.filter(game => !localIgdbIds.has(game.igdbId));
+      this.igdbOffset = offset;
+      this.igdbHasMore = results.length === PAGE_SIZE;
       this.igdbSearched = true;
 
       // Re-fetch count since IGDB caching may have added new games to local DB
@@ -339,7 +345,11 @@ const BrowseContent = {
       !this.isSearchPending && showIgdbSection && m('section.igdb-results', [
         m('h3.section-title', [
           '🌐 Results from IGDB',
-          !this.igdbLoading && this.igdbSearched && m('span.result-count', ` (${this.igdbGames.length})`),
+          !this.igdbLoading && this.igdbSearched && m('span.result-count',
+            this.igdbOffset > 0
+              ? ` (${this.igdbOffset + 1}-${this.igdbOffset + this.igdbGames.length})`
+              : ` (${this.igdbGames.length})`
+          ),
           m('small.igdb-attribution', [
             ' — powered by ',
             m('a', { href: 'https://www.igdb.com', target: '_blank', rel: 'noopener' }, 'IGDB.com')
@@ -377,7 +387,21 @@ const BrowseContent = {
               onAddToCollection: inCollection ? null : (selectedGame) => { this.addingGame = selectedGame; }
             });
           })
-        )
+        ),
+
+        !this.igdbLoading && !this.igdbError && this.igdbSearched && (this.igdbOffset > 0 || this.igdbHasMore) && m('div.pagination-row', [
+          m('div.pagination-buttons', [
+            m('button.outline.small', {
+              disabled: this.igdbOffset === 0,
+              onclick: () => this.searchIgdb(this.searchQuery, this.igdbOffset - PAGE_SIZE)
+            }, 'Previous'),
+            m('span.page-indicator', `Page ${Math.floor(this.igdbOffset / PAGE_SIZE) + 1}`),
+            m('button.outline.small', {
+              disabled: !this.igdbHasMore,
+              onclick: () => this.searchIgdb(this.searchQuery, this.igdbOffset + PAGE_SIZE)
+            }, 'Next')
+          ])
+        ])
       ]),
       
       !this.isSearchPending && this.inputValue.trim().length > 0 && this.inputValue.trim().length < 3 &&
